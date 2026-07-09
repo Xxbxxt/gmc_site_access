@@ -60,14 +60,14 @@ pages. Install shadcn/ui and configure the base component set (Button, Input, La
 | `src/lib/auth/pin.ts` | `hashPin`, `verifyPin`, `validatePin` (rejects blocked patterns), lockout after 3 attempts for 15 min |
 | `src/lib/auth/session.ts` | `SessionUser` type (`staffUserId`, `systemRole`, `workflowRoles`, `pinConfirmed`); `getSession` helper |
 | `src/lib/auth/guards.ts` | `requireWriteAccess(layer)`, `requireSystemAdmin()`, `requireProvisioned()` |
-| `src/middleware.ts` | Single pipeline: Entra session → provisioned check → PIN confirmed → role gate |
+| `src/proxy.ts` | Single pipeline: Entra session → provisioned check → PIN confirmed → role gate (Next 16 renamed `middleware` → `proxy`) |
 
 **Blocked PIN patterns** (rejected at creation with a clear message):
 all zeros (`0000`), repeating digits (`1111`, `2222`), ascending (`1234`), descending (`4321`), any sequential/repeating pattern (`1122`, `1235`).
 
 ### Auth flow
 
-1. Any `/dashboard/*` visit → middleware redirects to `/sign-in`
+1. Unauthenticated `/dashboard/*` visit (no session) → proxy redirects to `/sign-in`
 2. "Sign in with Microsoft" → Entra OAuth (org MFA enforced)
 3. NextAuth callback looks up user by `entra_object_id`
 4. Not found or `system_role = User` → `/unauthorized`
@@ -90,7 +90,7 @@ all zeros (`0000`), repeating digits (`1111`, `2222`), ascending (`1234`), desce
 
 ### System Admin — user management (minimal — just enough to close the auth loop)
 
-`src/app/dashboard/admin/users/` pages:
+`src/app/dashboard/system-admin/users/` pages:
 - User list showing all staff users + pending access requests highlighted
 - Provision user: set `system_role` + `workflow_roles`
 - Reset PIN: clears `pin_hash`; user must re-create on next login
@@ -100,21 +100,21 @@ all zeros (`0000`), repeating digits (`1111`, `2222`), ascending (`1234`), desce
 | Action | What it does |
 |---|---|
 | `src/actions/auth.ts` → `requestAccess` | Creates notification for System Admin + sends email |
-| `src/actions/admin.ts` → `provisionUser` | Sets system_role + workflow_roles + provisioned_at |
-| `src/actions/admin.ts` → `assignRoles` | Updates workflow_roles |
+| `src/actions/auth.ts` → `verifyPin`, `setupPin`, `refreshSession` | PIN entry/creation + JWT refresh after out-of-band provisioning |
+| `src/actions/admin.ts` → `provisionUser` | Sets system_role + workflow_roles + provisioned_at in one call (role assignment is not a separate action — see approved spec) |
 | `src/actions/admin.ts` → `resetPin` | Clears pin_hash; notifies user by email |
 
 ### Done when
 
-- [ ] New user signs in with Microsoft → lands on `/unauthorized`
-- [ ] User selects a role and requests access → System Admin receives dashboard notification + email
-- [ ] System Admin (seeded or already provisioned) provisions user + assigns roles → user receives email
-- [ ] Newly provisioned user signs in → `/pin/setup`; blocked PIN patterns rejected with clear message
-- [ ] Subsequent logins → `/pin` entry; 3 wrong PINs lock for 15 min; lock clears automatically
-- [ ] Correct PIN → dashboard; session expires after 1 hour of inactivity
-- [ ] System Admin can reset a user's PIN; user must re-create PIN on next login
-- [ ] Unprovisioned users cannot reach any `/dashboard/*` route
-- [ ] `tsc --noEmit` clean
+- [x] New user signs in with Microsoft → lands on `/unauthorized`
+- [x] User selects a role and requests access → System Admin receives dashboard notification + email
+- [x] System Admin (seeded or already provisioned) provisions user + assigns roles → user receives email
+- [x] Newly provisioned user signs in → `/pin/setup`; blocked PIN patterns rejected with clear message
+- [x] Subsequent logins → `/pin` entry; 3 wrong PINs lock for 15 min; lock clears automatically
+- [x] Correct PIN → dashboard; session expires after 1 hour of inactivity
+- [x] System Admin can reset a user's PIN; user must re-create PIN on next login
+- [x] Unprovisioned users cannot reach any `/dashboard/*` route
+- [x] `tsc --noEmit` clean
 
 ---
 
@@ -185,7 +185,7 @@ Applicable document uploads (Receptionist selects which apply; only selected bec
 When all three approvers are unavailable:
 1. Receptionist clicks "Request Delegated Approval"
 2. System notifies HCM, GMM, DMD, and System Admin via dashboard + email
-3. System Admin grants one-off approval privilege to Receptionist (via admin UI — add to `/dashboard/admin/`)
+3. System Admin grants one-off approval privilege to Receptionist (via admin UI — add to `/dashboard/system-admin/`)
 4. Receptionist performs single approval action
 5. System records: delegated approver, granted by, granted date, approval date, reason
 6. Full audit row written to `workflow_transitions`; System Admin can revoke at any time
@@ -422,7 +422,7 @@ revocation. Full audit trail throughout.
 
 ### Pages + components
 
-- System Admin: termination approval queue in `/dashboard/admin/terminations/` — approve or reject with comments
+- System Admin: termination approval queue in `/dashboard/system-admin/terminations/` — approve or reject with comments
 - IT: second queue tab for termination-approved records (`access_state = TerminationRequested`) — "Revoke Access" action
 
 ### Server Actions

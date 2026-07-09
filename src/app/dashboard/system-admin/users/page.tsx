@@ -1,0 +1,66 @@
+import { UserRow } from "@/app/dashboard/system-admin/users/user-row";
+import { PageHeader } from "@/components/layout/page-header";
+import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { listStaffUsersWithPendingRequests } from "@/lib/services/auth-service";
+
+export default async function AdminUsersPage() {
+  const { users, pendingRequests } = await listStaffUsersWithPendingRequests();
+
+  const isPending = (staffUserId: string) =>
+    pendingRequests.some((n) => n.requesterStaffUserId === staffUserId);
+
+  const getRequestedRole = (staffUserId: string) =>
+    pendingRequests.find((n) => n.requesterStaffUserId === staffUserId)
+      ?.requestedRole ?? null;
+
+  const sortedUsers = [...users].sort((a, b) => {
+    const pendingA = isPending(a.id) ? 1 : 0;
+    const pendingB = isPending(b.id) ? 1 : 0;
+    return pendingB - pendingA;
+  });
+
+  return (
+    <div>
+      <PageHeader
+        title="Staff Users"
+        subtitle="Provision access and manage PINs for GMC staff."
+      />
+      <div className="overflow-x-auto bg-card">
+        {sortedUsers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <p className="text-sm text-muted-foreground">No staff users yet.</p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>System Role</TableHead>
+                <TableHead>Workflow Roles</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedUsers.map((user) => (
+                <UserRow
+                  key={user.id}
+                  user={user}
+                  isPending={isPending(user.id)}
+                  requestedRole={getRequestedRole(user.id)}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </div>
+  );
+}

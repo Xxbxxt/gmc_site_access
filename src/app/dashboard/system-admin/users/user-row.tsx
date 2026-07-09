@@ -1,0 +1,286 @@
+"use client";
+
+import { MoreHorizontalIcon } from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+
+import { provisionUserAction, resetPinAction } from "@/actions/admin";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { TableCell, TableRow } from "@/components/ui/table";
+import type { SystemRole, WorkflowRole } from "@/lib/domain/types";
+
+const SYSTEM_ROLES: SystemRole[] = ["Guest", "Admin", "SystemAdmin"];
+const WORKFLOW_ROLES: WorkflowRole[] = [
+  "Receptionist",
+  "HCM",
+  "GMM",
+  "DMD",
+  "HospitalStaff",
+  "TrainingStaff",
+  "SecurityStaff",
+  "ITStaff",
+];
+const NO_WORKFLOW_ROLE = "none";
+
+type StaffUserRow = {
+  id: string;
+  displayName: string;
+  email: string;
+  systemRole: string;
+  workflowRoles: string[];
+  provisionedAt: Date | null;
+};
+
+function roleBadge(key: string, value: string, htmlId: string, label: string) {
+  return (
+    <label key={key} htmlFor={htmlId} className="cursor-pointer">
+      <Badge
+        variant="outline"
+        className="gap-2 border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary has-[[data-state=checked]]:text-primary-foreground"
+      >
+        <RadioGroupItem
+          value={value}
+          id={htmlId}
+          className="border-muted-foreground data-[state=checked]:border-primary-foreground [&_svg]:fill-primary-foreground"
+        />
+        {label}
+      </Badge>
+    </label>
+  );
+}
+
+export function UserRow({
+  user,
+  isPending,
+  requestedRole,
+}: {
+  user: StaffUserRow;
+  isPending: boolean;
+  requestedRole: string | null;
+}) {
+  const [provisionOpen, setProvisionOpen] = useState(false);
+  const [systemRole, setSystemRole] = useState<SystemRole>(
+    user.systemRole === "User" ? "Guest" : (user.systemRole as SystemRole),
+  );
+  const [workflowRole, setWorkflowRole] = useState<string>(
+    (user.workflowRoles[0] as WorkflowRole | undefined) ?? NO_WORKFLOW_ROLE,
+  );
+  const [isSubmitting, startTransition] = useTransition();
+
+  function handleProvision() {
+    const finalSystemRole: SystemRole = requestedRole
+      ? requestedRole === "Guest"
+        ? "Guest"
+        : "Admin"
+      : systemRole;
+    const finalWorkflowRoles: WorkflowRole[] = requestedRole
+      ? requestedRole === "Guest"
+        ? []
+        : [requestedRole as WorkflowRole]
+      : workflowRole !== NO_WORKFLOW_ROLE
+        ? [workflowRole as WorkflowRole]
+        : [];
+
+    startTransition(async () => {
+      const result = await provisionUserAction(
+        user.id,
+        finalSystemRole,
+        finalWorkflowRoles,
+      );
+      if (result.success) {
+        setProvisionOpen(false);
+        if (result.warning) {
+          toast.warning("User provisioned", { description: result.warning });
+        } else {
+          toast.success("User provisioned", {
+            description: `${user.displayName} can now sign in and set up their PIN.`,
+          });
+        }
+      } else {
+        toast.error("Couldn't provision user", { description: result.error });
+      }
+    });
+  }
+
+  function handleResetPin() {
+    const confirmed = window.confirm(
+      `Reset PIN for ${user.displayName}? They will need to set a new PIN on next login.`,
+    );
+    if (!confirmed) return;
+
+    startTransition(async () => {
+      const result = await resetPinAction(user.id);
+      if (result.success) {
+        if (result.warning) {
+          toast.warning("PIN reset", { description: result.warning });
+        } else {
+          toast.success("PIN reset", {
+            description: `${user.displayName} will need to set a new PIN on next login.`,
+          });
+        }
+      } else {
+        toast.error("Couldn't reset PIN", { description: result.error });
+      }
+    });
+  }
+
+  return (
+    <>
+      <TableRow className={isPending ? "bg-accent" : ""}>
+        <TableCell>{user.displayName}</TableCell>
+        <TableCell>{user.email}</TableCell>
+        <TableCell>{user.systemRole}</TableCell>
+        <TableCell>{user.workflowRoles.join(", ") || "—"}</TableCell>
+        <TableCell>
+          {user.provisionedAt
+            ? "Provisioned"
+            : isPending
+              ? "Pending"
+              : "Unprovisioned"}
+        </TableCell>
+        <TableCell className="text-right">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                disabled={isSubmitting}
+              >
+                <MoreHorizontalIcon />
+                <span className="sr-only">Open menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setProvisionOpen(true)}>
+                Provision
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleResetPin}>
+                Reset PIN
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      </TableRow>
+
+      <Dialog open={provisionOpen} onOpenChange={setProvisionOpen}>
+        <DialogContent>
+          {requestedRole ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Provision {user.displayName}</DialogTitle>
+                <DialogDescription>
+                  {user.displayName} requested the role &ldquo;{requestedRole}
+                  &rdquo;. Confirm to grant dashboard access.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setProvisionOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleProvision} loading={isSubmitting}>
+                  Confirm
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Provision {user.displayName}</DialogTitle>
+                <DialogDescription>
+                  Set the system role and workflow role for this user.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    System Role
+                  </Label>
+                  <RadioGroup
+                    value={systemRole}
+                    onValueChange={(value) =>
+                      setSystemRole(value as SystemRole)
+                    }
+                    className="flex flex-row flex-wrap gap-2"
+                  >
+                    {SYSTEM_ROLES.map((role) =>
+                      roleBadge(
+                        role,
+                        role,
+                        `${user.id}-system-role-${role}`,
+                        role,
+                      ),
+                    )}
+                  </RadioGroup>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Workflow Role
+                  </Label>
+                  <RadioGroup
+                    value={workflowRole}
+                    onValueChange={setWorkflowRole}
+                    className="flex flex-row flex-wrap gap-2"
+                  >
+                    {roleBadge(
+                      NO_WORKFLOW_ROLE,
+                      NO_WORKFLOW_ROLE,
+                      `${user.id}-workflow-role-none`,
+                      "None",
+                    )}
+                    {WORKFLOW_ROLES.map((role) =>
+                      roleBadge(
+                        role,
+                        role,
+                        `${user.id}-workflow-role-${role}`,
+                        role,
+                      ),
+                    )}
+                  </RadioGroup>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setProvisionOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleProvision} loading={isSubmitting}>
+                  Save
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

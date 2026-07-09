@@ -45,6 +45,8 @@ className="bg-blue-600 text-gray-500"
   --foreground:               222 47% 11%;     /* #0F172A */
   --card:                     0 0% 100%;
   --card-foreground:          222 47% 11%;
+  --popover:                  0 0% 100%;
+  --popover-foreground:       222 47% 11%;
   --primary:                  204 100% 37%;    /* GMC Blue #0076BF */
   --primary-foreground:       0 0% 100%;
   --secondary:                210 40% 96%;     /* #F1F5F9 */
@@ -58,10 +60,6 @@ className="bg-blue-600 text-gray-500"
   --border:                   214 32% 91%;     /* #E2E8F0 */
   --input:                    214 32% 91%;
   --ring:                     204 100% 37%;
-
-  /* Sidebar */
-  --sidebar:                  210 40% 98%;     /* #F8FAFC */
-  --sidebar-border:           214 32% 91%;
 
   /* Workflow status — success (Active, Completed, Fit) */
   --status-success:           142 71% 45%;
@@ -90,6 +88,9 @@ className="bg-blue-600 text-gray-500"
 
   /* Shape */
   --radius: 0.5rem;
+
+  /* Dialog/sheet backdrop scrim — always dark regardless of theme */
+  --overlay: 0 0% 0%;
 }
 
 @theme inline {
@@ -99,6 +100,8 @@ className="bg-blue-600 text-gray-500"
   --color-foreground:               hsl(var(--foreground));
   --color-card:                     hsl(var(--card));
   --color-card-foreground:          hsl(var(--card-foreground));
+  --color-popover:                  hsl(var(--popover));
+  --color-popover-foreground:       hsl(var(--popover-foreground));
   --color-primary:                  hsl(var(--primary));
   --color-primary-foreground:       hsl(var(--primary-foreground));
   --color-secondary:                hsl(var(--secondary));
@@ -112,8 +115,6 @@ className="bg-blue-600 text-gray-500"
   --color-border:                   hsl(var(--border));
   --color-input:                    hsl(var(--input));
   --color-ring:                     hsl(var(--ring));
-  --color-sidebar:                  hsl(var(--sidebar));
-  --color-sidebar-border:           hsl(var(--sidebar-border));
 
   --color-status-success:           hsl(var(--status-success));
   --color-status-success-bg:        hsl(var(--status-success-bg));
@@ -131,7 +132,21 @@ className="bg-blue-600 text-gray-500"
   --color-status-neutral-bg:        hsl(var(--status-neutral-bg));
   --color-status-neutral-fg:        hsl(var(--status-neutral-fg));
 
+  --color-overlay:                  hsl(var(--overlay));
+
   --radius: var(--radius);
+}
+
+/* Tailwind v4 defaults bare `border` to currentColor; shadcn components are
+   generated assuming it resolves to the border token instead. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border, currentColor);
+  }
 }
 ```
 
@@ -145,9 +160,10 @@ className="bg-blue-600 text-gray-500"
 |---|---|
 | Page background | `bg-background` |
 | Card / panel surface | `bg-card` |
-| Sidebar background | `bg-sidebar` |
-| Sidebar right border | `border-sidebar-border` |
-| Default border | `border-border` |
+| Floating surface (dropdowns, popovers, tooltips) | `bg-popover text-popover-foreground` |
+| Dialog/sheet backdrop scrim | `bg-overlay/50` |
+| Top bar | `bg-background` — same surface as the page, no border |
+| Default border | `border-border` — also the global default: a base-layer rule makes bare `border` resolve to it, so generated shadcn components stay consistent |
 
 ### Typography
 

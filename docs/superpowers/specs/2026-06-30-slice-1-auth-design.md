@@ -25,7 +25,7 @@ subsequent slice.
 - Seed script for first System Admin
 - NextAuth + Entra ID (Azure AD) sign-in
 - 4-digit PIN: create, verify, validate, lockout
-- Next.js middleware pipeline
+- Next.js proxy pipeline (auth)
 - Auth guard functions
 - Sign-in, PIN entry, PIN setup, unauthorized pages
 - System Admin: user list, provision user, assign roles, reset PIN
@@ -63,11 +63,17 @@ created_at        timestamptz NOT NULL DEFAULT now()
 ```sql
 id                      uuid        PK default gen_random_uuid()
 recipient_staff_user_id uuid        NOT NULL FK → staff_users
+requester_staff_user_id uuid        NULL      FK → staff_users -- who the notification is about (e.g. the access requester); null for non-request notifications
 engagement_id           uuid        NULL      -- null for auth notifications
 message                 text        NOT NULL
 read_at                 timestamptz NULL
 created_at              timestamptz NOT NULL DEFAULT now()
 ```
+
+`requester_staff_user_id` replaces matching the requester by searching for their
+email inside `message` — `requestAccessAction`, the `/unauthorized` pending check,
+and `/dashboard/system-admin/users`'s pending-row highlighting all compare this column
+directly instead of doing a text search.
 
 ### Domain types (`src/lib/domain/types.ts`)
 
@@ -116,7 +122,10 @@ Set up once in this slice. Every subsequent slice adds templates to `templates.t
 
 Thin wrapper around Microsoft Graph API. Accepts `{ to, subject, html }` and sends one email.
 Uses client credentials flow (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`,
-`GRAPH_SENDER_EMAIL`).
+`GRAPH_SENDER_EMAIL`). This is a separate MSAL client-credentials setup from the Auth.js sign-in
+provider below — same underlying App Registration, but a distinct code path and distinct env vars.
+The App Registration needs the `Mail.Send` **Application** permission (admin-consented) for this
+flow, in addition to the delegated `User.Read` permission used for sign-in.
 
 Synchronous for local dev — no queue. Slice 10 moves this to async.
 
@@ -153,13 +162,24 @@ export function pinResetTemplate(opts: {
 ### Required env vars (add to `.env.example`)
 
 ```
+# Auth.js (next-auth v5) sign-in provider
+AUTH_SECRET=
+AUTH_URL=http://localhost:3000
+AUTH_MICROSOFT_ENTRA_ID_ID=
+AUTH_MICROSOFT_ENTRA_ID_SECRET=
+AUTH_MICROSOFT_ENTRA_ID_ISSUER=   # https://login.microsoftonline.com/<tenant-id>/v2.0
+
+# Microsoft Graph client-credentials flow (graph-mail.ts — separate from sign-in above)
 AZURE_TENANT_ID=
 AZURE_CLIENT_ID=
 AZURE_CLIENT_SECRET=
 GRAPH_SENDER_EMAIL=          # shared mailbox or licensed user with Mail.Send
-NEXTAUTH_SECRET=
-NEXTAUTH_URL=http://localhost:3000
 ```
+
+Note: this project uses **Auth.js v5** (`next-auth@5`), not the older v4 API. The provider is
+imported from `next-auth/providers/microsoft-entra-id` (not `azure-ad`), and `signIn()` calls use
+provider id `'microsoft-entra-id'`. Auth.js auto-wires provider config from `AUTH_MICROSOFT_ENTRA_ID_*`
+env vars — no manual `clientId`/`clientSecret` wiring needed in `entra.ts` if named this way.
 
 ---
 
@@ -185,13 +205,17 @@ Required by NextAuth App Router integration.
 
 ### `src/lib/auth/entra.ts`
 
-NextAuth configuration. Azure AD provider using `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
-`AZURE_CLIENT_SECRET`. JWT strategy.
+NextAuth (Auth.js v5) configuration. `MicrosoftEntraID` provider from
+`next-auth/providers/microsoft-entra-id`, auto-wired from `AUTH_MICROSOFT_ENTRA_ID_ID`,
+`AUTH_MICROSOFT_ENTRA_ID_SECRET`, `AUTH_MICROSOFT_ENTRA_ID_ISSUER`. JWT strategy.
 
 Callbacks:
-- `signIn`: always allow (provisioned check happens in middleware, not here)
+- `signIn`: always allow (provisioned check happens in proxy, not here)
 - `jwt`: on first sign-in, look up or create `staff_users` row by `entra_object_id`; embed
-  `staffUserId`, `systemRole`, `workflowRoles`, `pinConfirmed: false` in token
+  `staffUserId`, `systemRole`, `workflowRoles`, `pinConfirmed: false` in token. On
+  `trigger === "update"`, also accepts and applies `systemRole`/`workflowRoles` (in
+  addition to the existing `pinConfirmed`/`hasPinSet`) so `refreshSessionAction` can
+  push a freshly-provisioned role into an already-live session without a full re-sign-in
 - `session`: expose `SessionUser` shape from token
 
 ### `src/lib/auth/session.ts`
@@ -253,9 +277,9 @@ All guards return the `SessionUser` on success so callers don't need a second `g
 
 ---
 
-## Middleware Pipeline
+## Proxy Pipeline
 
-**File:** `src/middleware.ts` (Next.js middleware — runs on the edge)
+**File:** `src/proxy.ts` (Next.js proxy — Next 16 renamed `middleware` → `proxy`; `nodejs` runtime only, no `edge`)
 
 Protected path pattern: `/dashboard/:path*`
 
@@ -264,13 +288,13 @@ Pipeline for every protected request:
 ```
 1. Valid NextAuth session?         No → redirect /sign-in
 2. system_role = User?             Yes → redirect /unauthorized
-3. pinConfirmed in token?          No → redirect /pin
-4. Accessing /dashboard/admin/*?   system_role !== SystemAdmin → 403
+3. pinConfirmed in token?          No → redirect /pin (or /pin/setup if hasPinSet is false)
+4. Accessing /dashboard/system-admin/*?   system_role !== SystemAdmin → 403
 5. Accessing /dashboard/[layer]/*? user lacks that workflow role → 403
 6. Pass through
 ```
 
-The middleware reads from the JWT token only — no DB call on every request.
+The proxy reads from the JWT token only — no DB call on every request.
 PIN confirmation is stored in the token and refreshed on successful PIN entry.
 
 ---
@@ -280,7 +304,7 @@ PIN confirmation is stored in the token and refreshed on successful PIN entry.
 ### `src/app/(auth)/sign-in/page.tsx`
 
 Server Component. Renders a centred card with the GMC logo and a single
-"Sign in with Microsoft" button (calls `signIn('azure-ad')` from a Client Component).
+"Sign in with Microsoft" button (calls `signIn('microsoft-entra-id')` from a Client Component).
 Redirects to `/dashboard` if already authenticated.
 
 ### `src/app/(auth)/pin/page.tsx`
@@ -309,8 +333,16 @@ Client Component. Shown to `system_role = User` users.
 - Role selector: dropdown of available system roles (Guest, Admin) and workflow roles
 - "Request Access" button → calls `requestAccessAction`
 - On submit: success message shown; button disabled to prevent double-requests
-- If user has already submitted a request (check via notifications or a flag), show
-  "Your request is pending" instead of the form
+- If user has already submitted a request (`requester_staff_user_id` match, unread),
+  show "Your request is pending" instead of the form
+- Before any of the above: the Server Component re-reads the caller's `staff_users`
+  row fresh from the DB (it already fetches this row for the pending-request check).
+  If that fresh read shows `system_role !== "User"` — i.e. a System Admin provisioned
+  them while their JWT still says `User` — render `<SessionRefresher next={...} />`
+  (`src/app/(auth)/unauthorized/session-refresher.tsx`) instead of the form. This is a
+  Client Component that calls `refreshSessionAction` on mount and redirects to
+  `/pin` or `/pin/setup` on success, so a provisioned user is never stuck seeing
+  `/unauthorized` on refresh — they never legitimately belong on this page again
 
 ---
 
@@ -318,7 +350,7 @@ Client Component. Shown to `system_role = User` users.
 
 Minimal implementation: just enough to close the auth loop.
 
-### `src/app/dashboard/admin/users/page.tsx`
+### `src/app/dashboard/system-admin/users/page.tsx`
 
 Server Component. Lists all `staff_users` rows.
 
@@ -330,9 +362,9 @@ Actions per row:
 - **Provision** — opens a modal to set system_role + workflow_roles; calls `provisionUserAction`
 - **Reset PIN** — calls `resetPinAction`; shows confirmation dialog first
 
-### `src/app/dashboard/admin/layout.tsx`
+### `src/app/dashboard/system-admin/layout.tsx`
 
-Wraps all `/dashboard/admin/*` pages. Calls `requireSystemAdmin()` guard at the top of the
+Wraps all `/dashboard/system-admin/*` pages. Calls `requireSystemAdmin()` guard at the top of the
 layout — non-System-Admin users hitting any admin route get a 403 page.
 
 ---
@@ -346,10 +378,31 @@ export async function requestAccessAction(formData: FormData): Promise<ActionRes
 ```
 
 - Reads `requestedRole` from formData
+- Checks for an existing unread notification with `requester_staff_user_id` = the
+  requester's `staff_users.id` — if found, returns "Your request is already pending"
 - Finds all `SystemAdmin` users in `staff_users`
-- Writes a `notifications` row for each System Admin
+- Writes a `notifications` row for each System Admin, with `requester_staff_user_id`
+  set to the requester's id
 - Calls `sendEmail(accessRequestedTemplate(...))` for each System Admin
 - Returns `{ success: true }` or `{ success: false, error: string }`
+
+```typescript
+export async function refreshSessionAction(): Promise<ActionResult>
+```
+
+- Re-reads the caller's own `staff_users` row (fresh from the DB, bypassing whatever
+  is cached in their JWT)
+- If not found, or `system_role` is still `User` → returns
+  `{ success: false, error: "Not yet provisioned" }` (a no-op safety net; the caller
+  is only ever rendered when the server already confirmed provisioning — see
+  `/unauthorized` below)
+- Otherwise calls `unstable_update()` with fresh `systemRole`, `workflowRoles`,
+  `hasPinSet`, and `pinConfirmed: false` (mirrors the "first sign-in" field-building
+  the `jwt` callback does), then returns `{ success: true }`
+- This exists to fix a gap: `systemRole`/`workflowRoles` are otherwise only ever
+  refreshed on a brand-new sign-in. A user provisioned while already holding a live
+  session (sitting on `/unauthorized`) would otherwise never see their role change
+  until they fully signed out and back in.
 
 ### `src/actions/admin.ts`
 
@@ -361,14 +414,18 @@ export async function provisionUserAction(
 ): Promise<ActionResult>
 // - requireSystemAdmin() guard
 // - Updates staff_users: system_role, workflow_roles, provisioned_at = now()
-// - Sends access approved email to the provisioned user
-// - revalidatePath('/dashboard/admin/users')
+// - Sends access approved email to the provisioned user, including a link
+//   (accessApprovedTemplate embeds `<a href="${AUTH_URL}">`) — the provisioned
+//   user's own next page load re-derives fresh session state via refreshSessionAction,
+//   so the link resolves correctly even if they still hold an old, un-provisioned
+//   session/JWT
+// - revalidatePath('/dashboard/system-admin/users')
 
 export async function resetPinAction(staffUserId: string): Promise<ActionResult>
 // - requireSystemAdmin() guard
 // - Sets pin_hash = null, pin_failed_attempts = 0, pin_locked_until = null
 // - Sends PIN reset email to the user
-// - revalidatePath('/dashboard/admin/users')
+// - revalidatePath('/dashboard/system-admin/users')
 ```
 
 Internal PIN verification action (not in admin.ts):
@@ -399,7 +456,7 @@ export async function setupPinAction(pin: string, confirmPin: string): Promise<A
 | Graph API email fails | Log error with `[email]` prefix; do NOT block the action; user still gets provisioned |
 | PIN entry while locked | Return remaining lockout time in minutes; do not increment counter further |
 | Duplicate access request | Check for existing unread notification before writing; return "already pending" |
-| NextAuth session error | Middleware catches missing session; redirect to `/sign-in` |
+| NextAuth session error | Proxy catches missing session; redirect to `/sign-in` |
 | System Admin guard fails | Return 403 page — do not expose which admin routes exist |
 
 ---
@@ -412,7 +469,7 @@ Run these checks when the slice is complete:
 - [ ] `pnpm tsx src/lib/db/seed.ts` → System Admin row inserted; idempotent on re-run
 - [ ] New Microsoft account signs in → lands on `/unauthorized` with role selector
 - [ ] Role selected + "Request Access" submitted → System Admin receives dashboard notification + email
-- [ ] System Admin signs in (seeded account) → sees access request in `/dashboard/admin/users`
+- [ ] System Admin signs in (seeded account) → sees access request in `/dashboard/system-admin/users`
 - [ ] System Admin provisions user with role → provisioned user receives email
 - [ ] Provisioned user signs in → lands on `/pin/setup`
 - [ ] Blocked PIN (e.g. `1234`) rejected with specific error message
@@ -422,7 +479,7 @@ Run these checks when the slice is complete:
 - [ ] After 15 min (or manual DB reset) → can enter PIN again
 - [ ] Correct PIN → `pinConfirmed = true`; idle for 1 hour → session expires; redirected to `/sign-in`
 - [ ] System Admin resets a user's PIN → user lands on `/pin/setup` on next login
-- [ ] Non-SystemAdmin hitting `/dashboard/admin/*` → 403
+- [ ] Non-SystemAdmin hitting `/dashboard/system-admin/*` → 403
 - [ ] `tsc --noEmit` → zero errors
 
 ---
@@ -436,21 +493,27 @@ Manual steps a human must complete — the AI cannot do these.
 **1. Azure App Registration** (Azure Portal)
 
 - Go to Entra ID → App Registrations → New registration
-- Add redirect URI: `http://localhost:3000/api/auth/callback/azure-ad` (type: Web)
-- Grant API permission: `User.Read` (Microsoft Graph, Delegated) → Grant admin consent
+- Add redirect URI: `http://localhost:3000/api/auth/callback/microsoft-entra-id` (type: Web)
+- Grant API permission: `User.Read` (Microsoft Graph, Delegated) → Grant admin consent — used for sign-in
+- Grant API permission: `Mail.Send` (Microsoft Graph, **Application**) → Grant admin consent — used by `graph-mail.ts`'s client-credentials flow
 - Create a Client Secret under Certificates & Secrets; copy the value immediately (shown once)
 - Note down: Directory (Tenant) ID, Application (Client) ID, Client Secret value
-- For `GRAPH_SENDER_EMAIL`: the mailbox account must have a Microsoft 365 licence with `Mail.Send`
+- For `GRAPH_SENDER_EMAIL`: pick an Exchange Online mailbox with a Microsoft 365 / Exchange
+  Online licence — `Mail.Send` (above) is the App Registration's own permission, not something
+  granted per-mailbox
 
 **2. Create `.env.local`** (copy from `.env.example`, fill in real values)
 
 ```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gmc_site_access
-NEXTAUTH_SECRET=          # generate: openssl rand -base64 32
-NEXTAUTH_URL=http://localhost:3000
-AZURE_TENANT_ID=          # from App Registration
-AZURE_CLIENT_ID=          # from App Registration
-AZURE_CLIENT_SECRET=      # from App Registration
+DATABASE_URL=postgresql://gmc:change-me@localhost:5433/gmc_site_access
+AUTH_SECRET=              # generate: npx auth secret
+AUTH_URL=http://localhost:3000
+AUTH_MICROSOFT_ENTRA_ID_ID=        # Application (Client) ID from App Registration
+AUTH_MICROSOFT_ENTRA_ID_SECRET=    # Client Secret value from App Registration
+AUTH_MICROSOFT_ENTRA_ID_ISSUER=    # https://login.microsoftonline.com/<tenant-id>/v2.0
+AZURE_TENANT_ID=          # same App Registration — used by graph-mail.ts client-credentials flow
+AZURE_CLIENT_ID=          # same App Registration
+AZURE_CLIENT_SECRET=      # same App Registration
 GRAPH_SENDER_EMAIL=       # licensed M365 mailbox with Mail.Send
 SEED_ADMIN_ENTRA_ID=      # your Entra Object ID: Azure Portal → Users → your user → Object ID
 SEED_ADMIN_EMAIL=         # your email address
@@ -499,4 +562,4 @@ npx shadcn@latest add button input label card form alert
 
 **8.** Sign in with a real Microsoft account and confirm the Entra redirect works.
 
-**9.** Sign in as the seeded System Admin and confirm access to `/dashboard/admin/users`.
+**9.** Sign in as the seeded System Admin and confirm access to `/dashboard/system-admin/users`.
