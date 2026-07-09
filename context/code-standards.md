@@ -165,11 +165,17 @@ export async function submitLayerAction(
 ```
 
 - Every Server Action has a try/catch
-- Every Server Action returns `{ success: boolean, error?: string }`
+- Every Server Action returns `{ success: boolean, error?: string, warning?: string }` —
+  `warning` is set on an otherwise-successful result when a non-critical side effect
+  (e.g. a notification email) failed; the primary mutation still succeeded and should
+  not be reported as a failure
 - Auth via `lib/auth/guards.ts` — never skip role checks
 - Delegate to services — never write to DB directly from actions
 - Always call `revalidatePath` after mutations that affect page data
 - Never throw from Server Actions — always return the error
+- On the client, every call site must surface the result — `toast.error(result.error)`
+  on failure, `toast.warning(result.warning)` when a success carries a warning. Never
+  call a Server Action from a Client Component and silently drop a failed result
 
 ---
 
@@ -196,6 +202,19 @@ Business logic lives in services. DB access lives in repositories. Nothing else 
 - Console errors always include context prefix: `[api/documents]`, `[actions/engagements]`
 - User-facing errors must be human readable — never expose raw error messages or stack traces
 - API route errors return `status: 500` with a generic message — never expose internals
+- Nothing fails silently on the client — every Server Action result must be surfaced via
+  `sonner` (`src/components/ui/sonner.tsx`, mounted once in the root layout):
+  `toast.error(...)` for failures, `toast.warning(...)` for a success with a `warning`,
+  `toast.success(...)` for plain confirmations. Do not hand-roll local `error` state +
+  an inline `<Alert>` for this — that pattern is what caused a real bug
+  (`user-row.tsx`'s reset-PIN error being set but rendered inside a collapsed,
+  invisible panel). `Alert` is still correct for *persistent* inline page state (e.g.
+  "Your request is pending"), just not for transient action-result feedback
+- Non-critical side effects that can fail independently of the primary mutation (e.g.
+  `sendEmail` inside `provisionUserAction`) must not swallow that failure — return it
+  via the action's `warning` field so the client can tell the user the main action
+  succeeded but a side effect didn't, rather than reporting a false, wholly-silent
+  success
 
 ---
 

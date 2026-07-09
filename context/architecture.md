@@ -36,22 +36,29 @@ Azure Functions and Drizzle migrations sit at project root (outside `src/`).
 │   ├── check-hospital-timeout/
 │   └── send-email/
 └── src/
-    ├── middleware.ts                     → single Next.js middleware pipeline
+    ├── proxy.ts                          → single Next.js proxy (auth) pipeline
     ├── app/
     │   ├── layout.tsx
     │   ├── page.tsx                      → redirect to dashboard or sign-in
-    │   ├── (auth)/                       → sign-in, PIN, PIN setup, unauthorized
+    │   ├── (auth)/                       → sign-in, sign-out, PIN, PIN setup, unauthorized
     │   ├── dashboard/
-    │   │   ├── [layer]/                  → per workflow role queues
-    │   │   └── admin/                    → System Admin pages (users, terminations)
+    │   │   ├── layout.tsx                → shared shell: session + unread count → DashboardShell + auto breadcrumbs
+    │   │   ├── page.tsx                  → role router (SystemAdmin → system-admin/users; others → placeholder)
+    │   │   ├── (workflow)/               → route group — workflow-layer queues (no URL segment)
+    │   │   │   ├── reception/
+    │   │   │   ├── hospital/
+    │   │   │   ├── training/
+    │   │   │   ├── security/
+    │   │   │   └── it/
+    │   │   └── system-admin/             → System Admin pages (users, terminations); layout is guard-only
     │   └── api/
     │       ├── auth/[...nextauth]/       → NextAuth catch-all route
-    │       ├── documents/                → multipart upload handler
-    │       └── notifications/            → mark-read endpoint
+    │       └── documents/                → multipart upload handler
     ├── actions/
-    │   ├── auth.ts                       → requestAccess, verifyPin, setupPin
-    │   ├── engagements.ts                → workflow mutations (Server Actions)
-    │   └── admin.ts                      → provisioning, PIN reset, termination approval
+    │   ├── auth.ts                       → requestAccess, verifyPin, setupPin, refreshSession
+    │   ├── admin.ts                      → provisioning, PIN reset, termination approval
+    │   ├── notifications.ts              → markNotificationRead, markAllNotificationsRead
+    │   └── engagements.ts                → workflow mutations (Server Actions)
     ├── lib/
     │   ├── domain/
     │   │   └── types.ts                  → SystemRole, WorkflowRole, and shared type aliases
@@ -80,9 +87,27 @@ Azure Functions and Drizzle migrations sit at project root (outside `src/`).
     │       └── seed.ts                   → first System Admin seed (local only)
     └── components/
         ├── ui/                           → shadcn/ui components
-        ├── layout/                       → sidebar, dashboard shell
+        ├── layout/                       → public shell, dashboard shell + top bar, breadcrumbs, page header
         └── workflow/                     → per-layer forms and queue components
 ```
+
+---
+
+## Dashboard Layout
+
+Every route under `/dashboard/*` is wrapped by `src/app/dashboard/layout.tsx` — the single
+place that reads the session, queries the unread notification count, and renders
+`DashboardShell` (top bar + `max-w-5xl` content column) with auto-generated breadcrumbs
+(`DashboardBreadcrumbs`, derived from URL segments via a label map). Child layouts and pages
+never render their own shell or breadcrumbs:
+
+- `dashboard/system-admin/layout.tsx` — `requireSystemAdmin` guard only, passes children through
+- Pages render `PageHeader` (title / subtitle / actions) + content
+- `dashboard/(workflow)/` — route group holding the five workflow-layer queues (`reception`,
+  `hospital`, `training`, `security`, `it`), kept apart from `system-admin/` to mirror the System
+  Roles vs. Workflow Roles split (`project_overview.md`). Route groups add no URL segment, so
+  `/dashboard/reception` etc. are unchanged; no group-level layout is needed since
+  `dashboard/layout.tsx` already covers every child route
 
 ---
 
@@ -99,7 +124,7 @@ Azure Functions and Drizzle migrations sit at project root (outside `src/`).
 | `src/lib/auth/` | All authentication — Entra ID, PIN, session, guards. |
 | `src/lib/db/` | Drizzle client, schema, seed. |
 | `src/components/` | UI only. No direct DB or workflow logic. |
-| `src/middleware.ts` | Single Next.js middleware pipeline — reads JWT token only, no DB calls. |
+| `src/proxy.ts` | Single Next.js proxy pipeline (Next 16 renamed `middleware` → `proxy`; `nodejs` runtime only) — reads JWT token only, no DB calls. |
 | `functions/` | Azure Functions — timer and queue-triggered background jobs. |
 
 ---
@@ -148,7 +173,7 @@ src/components/workflow/
         ↓
 src/app/api/documents/route.ts
         ↓
-src/middleware.ts (auth check)
+src/proxy.ts (auth check)
         ↓
 src/lib/services/document-service.ts
         ↓
@@ -301,6 +326,8 @@ Microsoft Graph API
 |---|---|---|
 | id | uuid | PK |
 | recipient_staff_user_id | uuid | FK → staff_users |
+| requester_staff_user_id | uuid | Nullable FK → staff_users — who the notification is about (e.g. access requester); null for non-request notifications |
+| requested_role | text | Nullable — the role the requester chose on `/unauthorized`; lets the Provision dialog confirm without re-prompting. Null for non-request notifications |
 | engagement_id | uuid | Nullable FK — null for auth notifications |
 | message | text | |
 | read_at | timestamptz | Null until read |
@@ -335,7 +362,7 @@ Access: private containers; upload via `app/api/documents/`; view via short-live
 - Provider: Microsoft Entra ID (org MFA) + 4-digit app PIN (hashed in `staff_users`)
 - Sign-in flow: Entra → provisioned check → PIN confirmed → dashboard
 - Unprovisioned users (`system_role = User`): `/unauthorized` — role selector + access request CTA
-- Middleware: `src/middleware.ts` — single Next.js middleware; reads JWT only (no DB calls per request)
+- Proxy: `src/proxy.ts` — single Next.js proxy pipeline; reads JWT only (no DB calls per request)
 - Protected routes: `/dashboard/*`
 - PIN lockout: 3 failed attempts → 15-minute lock
 - PIN rules: no all-zeros, no repeating digits, no ascending/descending sequences
@@ -383,3 +410,8 @@ Rules the AI agent must never violate:
 - Secrets never in git
 - Blob containers are private — no public document access
 - All auth logic in `lib/auth/` — no scattered auth checks
+- A staff user holds at most one workflow role at a time — the Provision UI is
+  single-select (`workflow_roles` stays `text[]` in the schema, but the UI never lets a
+  System Admin pick more than one). Temporary coverage for an absent HCM/GMM/DMD goes
+  through Delegated Approval (Slice 2's one-off, audited, revocable grant) — never by
+  permanently assigning someone a second workflow role

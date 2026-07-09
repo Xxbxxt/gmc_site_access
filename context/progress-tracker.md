@@ -17,53 +17,76 @@ Any AI agent reading this should immediately know what is done, what is in progr
 
 ---
 
-## Slice 1 — Auth 🔲
+## Slice 1 — Auth ✅
 
 **Spec:** `docs/superpowers/specs/2026-06-30-slice-1-auth-design.md`
+**Reviewed:** 2026-07-09 — see `/review` findings; architecture-boundary gap
+(Server Actions/Server Components querying Drizzle directly) and a cold-provisioning
+UI bug were both fixed as part of this slice's closeout.
 
 ### Schema
-- [ ] `staff_users` table
-- [ ] `notifications` table
+- [x] `staff_users` table
+- [x] `notifications` table
+- [x] `notifications.requester_staff_user_id` — replaces email-substring matching for
+      access-request tracking
 
 ### Seed
-- [ ] `src/lib/db/seed.ts` — first System Admin
+- [x] `src/lib/db/seed.ts` — first System Admin
 
 ### Email infrastructure
-- [ ] `src/lib/azure/graph-mail.ts`
-- [ ] `src/lib/email/send.ts`
-- [ ] `src/lib/email/templates.ts` (auth templates)
+- [x] `src/lib/azure/graph-mail.ts`
+- [x] `src/lib/email/send.ts`
+- [x] `src/lib/email/templates.ts` (auth templates)
 
 ### UI tokens
-- [ ] `context/ui-tokens.md` filled
-- [ ] shadcn/ui base components installed (Button, Input, Label, Card, Form, Alert)
-- [ ] `context/ui-registry.md` updated
+- [x] `context/ui-tokens.md` filled
+- [x] shadcn/ui base components installed (Button, Input, Label, Card, Form, Alert
+      — plus DropdownMenu, Sonner, Avatar, Breadcrumb, Table, RadioGroup, Badge,
+      Dialog for the System Admin UI and dashboard shell)
+- [x] `context/ui-registry.md` updated
 
 ### Auth library
-- [ ] `src/lib/domain/types.ts` (SystemRole, WorkflowRole)
-- [ ] `src/lib/auth/entra.ts`
-- [ ] `src/lib/auth/pin.ts`
-- [ ] `src/lib/auth/session.ts`
-- [ ] `src/lib/auth/guards.ts`
-- [ ] `src/app/api/auth/[...nextauth]/route.ts`
-- [ ] `src/middleware.ts`
+- [x] `src/lib/domain/types.ts` (SystemRole, WorkflowRole)
+- [x] `src/lib/auth/entra.ts`
+- [x] `src/lib/auth/pin.ts` (also owns `setPinHash`/`resetPin` — PIN persistence
+      stays inside the `lib/auth/` boundary rather than a generic service)
+- [x] `src/lib/auth/session.ts`
+- [x] `src/lib/auth/guards.ts`
+- [x] `src/app/api/auth/[...nextauth]/route.ts`
+- [x] `src/proxy.ts` (Next 16 renamed `middleware` → `proxy`)
+
+### Services (added during review closeout — Server Actions/Components no
+longer query Drizzle directly, per `architecture.md`'s invariants)
+- [x] `src/lib/services/auth-service.ts` — staff user lookups, access-request
+      logic, provisioning
+- [x] `src/lib/services/notification-service.ts` — unread count, recent list,
+      mark-read
 
 ### Pages
-- [ ] `src/app/(auth)/sign-in/page.tsx`
-- [ ] `src/app/(auth)/pin/page.tsx`
-- [ ] `src/app/(auth)/pin/setup/page.tsx`
-- [ ] `src/app/(auth)/unauthorized/page.tsx`
+- [x] `src/app/(auth)/sign-in/page.tsx`
+- [x] `src/app/(auth)/pin/page.tsx`
+- [x] `src/app/(auth)/pin/setup/page.tsx`
+- [x] `src/app/(auth)/unauthorized/page.tsx`
+- [x] `src/app/(auth)/unauthorized/session-refresher.tsx` — auto-refreshes a stale
+      session when the DB shows the user was provisioned while their JWT still
+      said `User`, redirecting to `/pin` or `/pin/setup` without a click
 
 ### System Admin (minimal)
-- [ ] `src/app/dashboard/admin/users/page.tsx`
-- [ ] `src/app/dashboard/admin/layout.tsx`
+- [x] `src/app/dashboard/system-admin/users/page.tsx`
+- [x] `src/app/dashboard/system-admin/layout.tsx`
 
 ### Server Actions
-- [ ] `src/actions/auth.ts` (requestAccess, verifyPin, setupPin)
-- [ ] `src/actions/admin.ts` (provisionUser, assignRoles, resetPin)
+- [x] `src/actions/auth.ts` (requestAccess, verifyPin, setupPin)
+- [x] `src/actions/auth.ts` — `refreshSessionAction` (patches a live JWT with fresh
+      `systemRole`/`workflowRoles` after out-of-band provisioning)
+- [x] `src/actions/admin.ts` (provisionUser — sets system_role + workflow_roles in
+      one call; resetPin)
 
 ### Verification
-- [ ] Full auth loop tested end-to-end (see spec Done When checklist)
-- [ ] `tsc --noEmit` clean
+- [x] Full auth loop verified end-to-end via code review (see spec Done When
+      checklist) — live Entra ID sign-in still requires the Developer Steps in
+      the spec (App Registration, `.env.local`)
+- [x] `tsc --noEmit` clean
 
 ---
 

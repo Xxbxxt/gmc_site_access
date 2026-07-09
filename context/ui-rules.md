@@ -18,54 +18,88 @@ Apply the font variable class to the `<html>` tag. Never use system fonts as the
 
 ---
 
-## Layout
+## Component Library
 
-Two-column layout: collapsible sidebar on the left, scrollable main content on the right.
+Every dashboard component is built from shadcn/ui — this is not optional. Never hand-roll a
+primitive that shadcn already provides (buttons, inputs, dropdowns, dialogs, avatars, selects,
+tables, etc.).
 
-- Sidebar expanded: `w-60` (240px)
-- Sidebar collapsed: `w-16` (64px) — icons only, no text labels
-- Main content area: `flex-1 min-h-screen bg-background`
-- Page content padding: `p-6`
-- Max width: none — content fills the available area
-
-Collapse state lives in a client component wrapper. Toggle button sits at the bottom of the
-sidebar. Sidebar never overlays content — it always pushes the main area.
+- Before building anything, check `ui-registry.md` — reuse an installed component/pattern first
+- Install missing primitives with `pnpm dlx shadcn@latest add <component>`, then register the
+  install in `ui-registry.md`'s "Installed shadcn/ui Components" table
+- Only reach for a hand-built pattern (like the radio badge group) when there's a documented
+  reason a shadcn primitive doesn't fit — and record that reason in `ui-registry.md`
+- Never style a native HTML element (`<button>`, `<select>`, `<input>`) as a substitute for the
+  matching shadcn component
 
 ---
 
-## Sidebar
+## Layout
+
+Single-column layout: one top bar, one scrollable content column beneath it. No sidebar.
+
+- Top bar: sticky at `top-0`, same `bg-background` as the page — never a separate surface
+  color, no bottom border; it blends into the page
+- Content area: `mx-auto w-full max-w-5xl`, page padding `p-6`
+- Every dashboard page — for every role/layer — lives inside this same constrained column
+- The top bar inner row and the content column must always share the same max width
+- The shared `src/app/dashboard/layout.tsx` owns the shell and breadcrumbs for every
+  dashboard route — child layouts are guard-only, pages never render their own shell
+
+---
+
+## Top Bar
 
 ```
-bg-sidebar border-r border-sidebar-border
+sticky top-0 z-10 w-full bg-background
 ```
 
-Navigation items:
+Inner row (constrains bar contents to match the content column):
 
-| State | Classes |
-|---|---|
-| Expanded, inactive | `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground` |
-| Expanded, active | `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium bg-primary/10 text-primary` |
-| Collapsed, inactive | `flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground` |
-| Collapsed, active | `flex items-center justify-center rounded-lg p-2 bg-primary/10 text-primary` |
+```
+mx-auto flex h-20 w-full max-w-5xl items-center justify-between px-6
+```
 
-Icon size: `h-5 w-5` in all nav items.
-GMC logo: full logo when expanded, icon-only when collapsed.
+| Element | Position | Notes |
+|---|---|---|
+| GMC logo | Left | Small (~80px wide), links to `/dashboard`. Nothing else on the left — navigation lives in the breadcrumb below the bar, not the top bar |
+| Notifications bell | Right | Lucide `Bell`, `h-5 w-5`; unread indicator dot via `notifications` table |
+| User avatar menu | Right, outermost | shadcn `Avatar` (`h-8 w-8`, Microsoft profile photo from session `image`, initials fallback) triggering a `DropdownMenu` — name + email label, then Sign Out |
+
+---
+
+## Breadcrumbs
+
+Rendered automatically for every dashboard route by `DashboardBreadcrumbs`
+(`src/components/layout/dashboard-breadcrumbs.tsx`) inside the shared dashboard layout —
+pages never render their own breadcrumb.
+
+- shadcn `Breadcrumb`, default styling (chevron separators), `mb-4` below the top bar
+- The trail always starts with a `Home` crumb (href `#`, design-only) prepended before the
+  URL-derived crumbs, e.g. `Home › Dashboard › Admin › Users`
+- Trail is derived from URL segments via the `SEGMENT_LABELS` map in that file — add a label
+  there whenever a new dashboard route ships (unmapped segments fall back to capitalized)
+- Current page renders as `BreadcrumbPage` (non-clickable); ancestors as `BreadcrumbLink`
+  (Next `Link` via `asChild`) — every segment needs a real route, add a `redirect()` page if
+  the segment has no content of its own
 
 ---
 
 ## Dashboard Header
 
-Not a fixed bar — part of normal page flow at the top of `p-6` page padding.
+Not a fixed bar — part of normal page flow at the top of the `max-w-5xl` content column,
+below the auto breadcrumb. Always rendered via the `PageHeader` component
+(`src/components/layout/page-header.tsx`) — never rebuilt inline.
 
 ```
 flex items-center justify-between mb-6
 ```
 
-| Element | Classes |
+| Element | Notes |
 |---|---|
 | Page title | `text-2xl font-semibold text-foreground` |
 | Subtitle (optional) | `text-sm text-muted-foreground mt-1` |
-| Actions (right-aligned) | Button with appropriate variant |
+| Actions (right-aligned) | Button with appropriate variant, via the `actions` prop |
 
 ---
 

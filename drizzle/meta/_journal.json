@@ -5,8 +5,22 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1782294085245,
-      "tag": "0000_jazzy_wither",
+      "when": 1783422107622,
+      "tag": "0000_first_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783503971776,
+      "tag": "0001_hard_sir_ram",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783535785370,
+      "tag": "0002_numerous_purple_man",
       "breakpoints": true
     }
   ]

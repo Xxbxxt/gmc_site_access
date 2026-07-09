@@ -22,9 +22,8 @@ Read in this exact order before any implementation:
 9. context/progress-tracker.md
 
 ## Rules That Never Change
-
 - Never use hardcoded hex values or raw Tailwind color classes
-- Update `progress-tracker.md` and `ui-registry.md` after every feature
+- Update `progress-tracker.md` and `ui-registry.md` after every slice.
 - Before any third party library — load its installed skill first,
   then read `context/library-docs.md` for project-specific rules
 - If the same problem persists after one corrective prompt —
@@ -32,12 +31,12 @@ Read in this exact order before any implementation:
 
 ## Available Skills
 
-- `/architect` — before any complex feature. Think before building.
+- `/architect` — before any complex feature/slice. Think before building.
 - `/imprint` — after any new UI component. Capture patterns.
 - `/review` — before demo or when something feels off.
 - `/recover` — when something breaks after one failed correction.
-- `/remember save` — when a feature spans multiple sessions.
-- `/remember restore` — when returning after a multi-session feature.
+- `/remember save` — when a feature/slice spans multiple sessions.
+- `/remember restore` — when returning after a multi-session feature/slice.
 
 ## Important Notes
 
@@ -52,3 +51,4 @@ Read in this exact order before any implementation:
 - Prefer minimal, surgical changes
 - Follow existing patterns exactly
 - Ask before making architectural decisions
+- Do NOT start a dev server or curl/fetch a running one to visually verify changes — a dev server may already be running under the user's own control. Ask the user to verify in-browser instead.

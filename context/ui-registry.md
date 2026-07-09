@@ -20,18 +20,303 @@ After building any component: update this file immediately. Do not batch updates
 
 | Component | File | Installed |
 |---|---|---|
-| Button | `src/components/ui/button.tsx` | |
-| Input | `src/components/ui/input.tsx` | |
-| Label | `src/components/ui/label.tsx` | |
-| Card | `src/components/ui/card.tsx` | |
-| Form | `src/components/ui/form.tsx` | |
-| Alert | `src/components/ui/alert.tsx` | |
+| Button | `src/components/ui/button.tsx` | 2026-07-07 |
+| Input | `src/components/ui/input.tsx` | 2026-07-07 |
+| Label | `src/components/ui/label.tsx` | 2026-07-07 |
+| Card | `src/components/ui/card.tsx` | 2026-07-07 |
+| Form | `src/components/ui/form.tsx` | 2026-07-07 |
+| Alert | `src/components/ui/alert.tsx` | 2026-07-07 |
+| DropdownMenu | `src/components/ui/dropdown-menu.tsx` | 2026-07-08 |
+| Sonner (Toaster) | `src/components/ui/sonner.tsx` | 2026-07-08 |
+| Avatar | `src/components/ui/avatar.tsx` | 2026-07-08 |
+| Breadcrumb | `src/components/ui/breadcrumb.tsx` | 2026-07-08 |
+| Table | `src/components/ui/table.tsx` | 2026-07-08 |
+| RadioGroup | `src/components/ui/radio-group.tsx` | 2026-07-08 |
+| Badge | `src/components/ui/badge.tsx` | 2026-07-08 |
+| Dialog | `src/components/ui/dialog.tsx` | 2026-07-08 |
+
+**Not installed (tried, removed as unused):** `Select` and `Checkbox` were briefly added
+for the Provision dialog, then removed — the RadioGroup+Badge pattern below replaced both
+(single-select reads better as a badge stack than a `<select>`, and workflow role turned
+out to need single-select too, not a checkbox multi-select — see Provision Dialog notes).
+Don't reinstall either without a fresh reason; check here first.
+
+**Table:** `TableHead`/`TableCell` are customized in-file (same precedent as
+`DropdownMenu` below) to match `ui-rules.md`'s Tables convention out of the box —
+`px-4 py-3`, headers `text-xs font-medium uppercase tracking-wide text-muted-foreground`,
+cells `text-sm text-foreground`. `TableRow`'s upstream default already matched project
+convention (`border-b` only — no vertical/column dividers, no alternating row colors,
+`hover:bg-muted/50`) so it was left as-is. Give the header `TableRow` a
+`hover:bg-transparent` override (see `dashboard/system-admin/users/page.tsx`) so the hover
+effect doesn't apply to the header row itself. First used in
+`dashboard/system-admin/users/page.tsx` + `user-row.tsx`, replacing a hand-rolled `<table>`.
+
+**Row actions pattern:** A row's actions column is a single right-aligned
+(`text-right` on both `TableHead` and `TableCell`) ghost icon button
+(`variant="ghost" size="icon" className="size-8"`, `MoreHorizontalIcon` from
+lucide-react, `<span className="sr-only">Open menu</span>` for a11y) that triggers a
+`DropdownMenu` (`align="end"`) listing the row's actions, instead of multiple inline
+`<Button>`s per row. This project's installed `DropdownMenu` is Radix-based — use
+`DropdownMenuTrigger asChild` wrapping the `Button`, not a `render` prop (that's a
+different, newer primitive API this project doesn't have installed). See
+`user-row.tsx`'s Provision/Reset PIN menu for the reference implementation.
+
+**Toasts (`sonner`):** Mounted once via `<Toaster />` in the root `layout.tsx`. This is
+now the standard way to surface Server Action results on the client — call
+`toast.error(result.error)`, `toast.success(...)`, or `toast.warning(result.warning)`
+after a `useTransition`-wrapped action call, instead of hand-rolling local `error` state
++ an inline `<Alert>`. The generated `sonner.tsx` referenced `var(--popover)` /
+`var(--popover-foreground)`, which this project's token set doesn't define — repointed
+to `var(--color-card)` / `var(--color-card-foreground)` / `var(--color-border)` (the
+Tailwind-generated, already-`hsl()`-wrapped variables from `@theme inline`, not the raw
+unwrapped `:root` triples) to match the existing surface tokens. `Alert` is still
+installed and valid for persistent inline state (e.g. "Your request is pending") — it's
+just no longer used for transient action-result errors.
+
+**DropdownMenu project tweaks:** (1) All interactive items (`Item`, `CheckboxItem`,
+`RadioItem`, `SubTrigger`) use `cursor-pointer` instead of upstream's `cursor-default` —
+keep this if the component is ever re-generated. (2) The panel's `bg-popover` /
+`text-popover-foreground` tokens are defined in `globals.css` (added 2026-07-08, white
+surface like `card`) — any future shadcn component that floats (Popover, Tooltip, Select,
+Command) depends on them. (3) Menu items that navigate use `asChild` + Next `Link`, with a
+lucide icon before the label (e.g. `LogOut` before "Sign out") — icon sizing is automatic
+via the component's `[&_svg]` rules.
+
+**Button `loading` prop:** `Button` takes an optional `loading?: boolean`. When true it
+disables the button, sets `aria-busy`, and prepends a `Loader2` (lucide-react)
+`animate-spin` icon before the children. Ignored when `asChild` is set (Slot requires a
+single child element). Use on every button that triggers a Server Action / async
+transition, so the UI never looks unresponsive during a click.
 
 ---
 
 ## Custom Components
 
-*None yet. Add entries here as components are built.*
+### PublicShell
+
+File: `src/components/layout/public-shell.tsx`
+Last updated: 2026-07-07
+
+| Property | Class |
+|---|---|
+| Outer | `flex flex-col flex-1 items-center justify-center bg-muted` |
+| Panel | `w-full max-w-3xl flex flex-col items-center gap-10 py-24 px-16 bg-card` |
+| Logo | GMC logo, always rendered at top |
+
+**Pattern notes:**
+Shared shell for every non-dashboard page (landing `/`, and everything in `(auth)/`
+via `src/app/(auth)/layout.tsx`) — large centered panel with generous padding, GMC logo,
+no card border/shadow. Headings use `text-3xl font-semibold`, subtitles
+`text-lg text-muted-foreground`, primary CTA is `<Button size="lg">`. Dashboard pages
+never use this — they use `DashboardShell` per `ui-rules.md`.
+
+### DashboardShell / DashboardTopbar
+
+File: `src/components/layout/dashboard-shell.tsx`, `src/components/layout/dashboard-topbar.tsx`
+Last updated: 2026-07-08
+
+| Property | Class |
+|---|---|
+| Shell outer | `min-h-screen bg-background` |
+| Content column | `mx-auto w-full max-w-5xl p-6` |
+| Top bar | `sticky top-0 z-10 w-full bg-background` — no separate surface color, no border; blends into the page |
+| Top bar inner row | `mx-auto flex h-20 w-full max-w-5xl items-center justify-between px-6` |
+| Bell button | `h-9 w-9 text-muted-foreground rounded-md`; unread dot `h-2 w-2 rounded-full bg-destructive` |
+| Avatar trigger | `h-8 w-8` Avatar, trigger `cursor-pointer rounded-full focus-visible:ring-1 focus-visible:ring-ring` |
+
+**Pattern notes:**
+Replaces the old sidebar-based shell — no sidebar anywhere in the app now. `DashboardShell`
+is a Server Component: each `dashboard/{layer}/layout.tsx` calls `requireXxx()` guard, reads
+`getSession()`, queries an unread `notifications` count plus the 10 most recent
+`notifications` rows for `recipientStaffUserId`, and passes `homeHref` / `userName` /
+`userEmail` / `userImage` / `unreadCount` / `notifications` down. `DashboardTopbar`
+(the client half) is deliberately minimal — no nav links (navigation lives in `PageHeader`'s
+breadcrumb): small GMC logo linking to `homeHref` (80×38 — the PNG's true ratio is ~2.1:1,
+always keep width ≈ 2.1 × height when resizing or it distorts), a notifications bell, and a
+shadcn `Avatar`
+(`h-8 w-8`, Microsoft profile photo from session `image` with initials fallback — the Entra
+provider fetches the 48px Graph photo as a base64 data URI by default) triggering a
+`DropdownMenu` — label with name, email, and the user's system role as a neutral pill
+(`rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground`; humanized in
+the dashboard layout, e.g. "System Admin" — deliberately `bg-muted`, not a status bucket,
+since roles aren't workflow states), separator, then a `LogOut`-icon "Sign out" item linking
+to the `/sign-out` confirmation page. Rendered ONCE by the shared `src/app/dashboard/layout.tsx`
+(which owns the session read + unread-count query and also renders `DashboardBreadcrumbs`
+above children) — child layouts are guard-only (`system-admin/layout.tsx` = `requireSystemAdmin`
+pass-through) and pages never render the shell themselves. The shell's `<main>` owns the
+`p-6` — pages must not add their own outer padding. `/dashboard` (root page) role-routes:
+SystemAdmin → `/dashboard/system-admin/users`; other roles get a centered "coming soon" empty state
+until the workflow-layer dashboards exist.
+
+Width invariant: the top bar inner row and the shell content column are both `max-w-5xl` and
+must always change together (resolved 2026-07-08 after a brief 4xl/5xl drift).
+
+**Notifications bell (2026-07-08):** Same `DropdownMenu` pattern as the avatar menu —
+`DropdownMenuTrigger` is the bell button itself (`relative`, unread dot positioned
+absolutely, `hover:bg-accent hover:text-accent-foreground` like a ghost icon button),
+`DropdownMenuContent align="end" className="w-80"`. Header row: "Notifications" label +
+conditional "Mark all as read" text button (`text-xs text-primary hover:underline`, only
+rendered when `unreadCount > 0`). Each `DropdownMenuItem` is `flex-col items-start
+whitespace-normal` (default `DropdownMenuItem` assumes a single line — override for
+wrapping message text); unread items get a small `bg-destructive` dot + full-opacity
+`text-foreground`, read items are plain `text-muted-foreground`. Selecting an unread item
+calls `markNotificationReadAction`; selecting an already-read item is a no-op (still closes
+the menu, Radix default). Empty state: centered `text-sm text-muted-foreground` line, no
+icon (dropdown is too small for the full empty-state pattern in `ui-rules.md`). Relative
+timestamps use a small inline `timeAgo()` helper in `dashboard-topbar.tsx` — no date library
+added for this.
+
+Mutations live in `src/actions/notifications.ts` (`markNotificationReadAction`,
+`markAllNotificationsReadAction`) as Server Actions, not an API route — matches this
+project's invariant that Server Actions own mutations and API routes are reserved for file
+uploads. `architecture.md`'s folder tree previously listed a planned `api/notifications/`
+mark-read route; corrected when this was built.
+
+### PageHeader
+
+File: `src/components/layout/page-header.tsx`
+Last updated: 2026-07-08
+
+| Property | Class |
+|---|---|
+| Outer | `mb-6 flex items-center justify-between` |
+| Title | `text-2xl font-semibold text-foreground` |
+| Subtitle | `mt-1 text-sm text-muted-foreground` |
+
+**Pattern notes:**
+Server Component; the standard header for every dashboard page — never rebuild this block
+inline. Props: `title`, `subtitle?`, `actions?` (right-aligned ReactNode, e.g. the page's one
+primary button). Breadcrumbs were removed from this component (2026-07-08) — they're now
+rendered automatically by `DashboardBreadcrumbs` in the shared dashboard layout.
+
+### DashboardBreadcrumbs
+
+File: `src/components/layout/dashboard-breadcrumbs.tsx`
+Last updated: 2026-07-08
+
+| Property | Class |
+|---|---|
+| Breadcrumb | shadcn `Breadcrumb` defaults (chevron separators), `mb-4` |
+
+**Pattern notes:**
+Client component rendered once by `src/app/dashboard/layout.tsx` above page content — pages
+never render their own breadcrumb. Takes a `homeHref` prop (same value passed to
+`DashboardShell`, e.g. `/dashboard`) and builds the trail from `usePathname()` segments: every
+segment becomes a crumb, with a **Home** crumb pointing at `homeHref` always prepended — the
+trail reads `Home › Dashboard › Admin › Users` (`BreadcrumbLink asChild` + Next `Link`; last segment is a
+non-clickable `BreadcrumbPage`). Labels come from the `SEGMENT_LABELS` map in the same file —
+**add a label when a new dashboard route ships**; unmapped segments fall back to a capitalized
+segment name (fine for static routes, wrong for dynamic ids — revisit when engagement detail
+pages land in Slice 2). Every segment needs a real route: `/dashboard` and `/dashboard/system-admin`
+are `redirect()`-only pages created for this.
+
+### SubmitButton
+
+File: `src/components/ui/submit-button.tsx`
+Last updated: 2026-07-07
+
+**Pattern notes:**
+Thin client wrapper around `Button` using `useFormStatus()` to auto-derive
+`loading={pending}`. Use inside any `<form action={serverAction}>` where the button
+itself can't be a Server Component (e.g. the inline `"use server"` forms on `/`,
+`/sign-in`, `/sign-out`) — `useFormStatus` only works in a child of the `<form>`. For
+forms already tracked with `useTransition` client-side, pass `loading={isPending}` to
+`Button` directly instead of reaching for this wrapper.
+
+### PinInput
+
+File: `src/components/auth/pin-input.tsx`
+Last updated: 2026-07-07
+
+**Pattern notes:**
+Controlled 4-digit PIN entry (auto-focus next box, backspace navigates back). Used on
+`/pin` and twice on `/pin/setup`. Not a shadcn primitive — built on top of `Input`.
+
+### Radio badge group (role selector)
+
+File: `src/app/(auth)/unauthorized/request-access-form.tsx`,
+`src/app/dashboard/system-admin/users/user-row.tsx` (inline in both, not extracted)
+
+**Pattern notes:**
+Superseded 2026-07-08 — this used to be a hand-rolled native `<input type="radio">` +
+`sr-only peer` trick specifically to avoid a Radix dependency. That reasoning turned out
+to be wrong: Radix's `RadioGroup` already renders a hidden native bubble input per item
+when given a `name`, so it posts through `FormData` in a Server Action form exactly like
+a plain radio input would — there was no real tradeoff being avoided. Now built on the
+actual shadcn `RadioGroup`/`RadioGroupItem` wrapped in a `Badge`:
+
+```
+<RadioGroup value={...} onValueChange={...} className="flex flex-row flex-wrap gap-2">
+  <label htmlFor={id} className="cursor-pointer">
+    <Badge variant="outline" className="gap-2 border-border bg-background px-2.5 py-1
+      text-xs font-medium text-muted-foreground hover:bg-muted
+      has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary
+      has-[[data-state=checked]]:text-primary-foreground">
+      <RadioGroupItem value={...} id={id} className="border-muted-foreground
+        data-[state=checked]:border-primary-foreground [&_svg]:fill-primary-foreground" />
+      {label}
+    </Badge>
+  </label>
+</RadioGroup>
+```
+
+Two things this specific composition depends on: (1) the checked-state color flip on
+`Badge` uses `has-[[data-state=checked]]:` on the label's own descendant — this only
+works because the radio dot's ring color (`border-muted-foreground` /
+`data-[state=checked]:border-primary-foreground`) is set explicitly on `RadioGroupItem`
+itself, not inherited via `currentColor` from the badge — an earlier version relied on
+inheritance and the ring silently disappeared when unchecked (see git history / memory
+2026-07-08 if this regresses); (2) `request-access-form.tsx` uses `defaultValue`
+(uncontrolled, posts via native `FormData`), `user-row.tsx` uses `value`/`onValueChange`
+(controlled, read into React state before calling a Server Action programmatically) —
+pick the mode based on whether the surrounding form actually submits via `FormData` or
+via a button `onClick`. Reuse this pattern for any future single-choice-from-a-small-set
+picker before reaching for `Select`.
+
+### Provision Dialog
+
+File: `src/app/dashboard/system-admin/users/user-row.tsx`
+Last updated: 2026-07-08
+
+**Pattern notes:**
+Replaced an inline expanding `TableRow` (a second row that toggled open beneath the
+clicked row) with a `Dialog` — cleaner, and doesn't push other rows down the page.
+Content branches on whether the user has a pending access request with a stored
+`requestedRole` (see `notifications.requested_role`, added this session):
+
+- **Has a requested role** — plain confirmation, no picker: *"{name} requested the role
+  '{role}'. Confirm to grant dashboard access."* Cancel / Confirm only. The requester
+  already chose their role once (recorded in the request notification + email) — the
+  System Admin isn't asked to pick it again, only to confirm it.
+- **No pending request** (cold provisioning, or editing an already-provisioned user's
+  roles) — falls back to the full picker: System Role and Workflow Role, each the
+  Radio badge group above. **Workflow Role is single-select** — a staff user holds at
+  most one workflow role at a time (see `architecture.md` Invariants); the picker
+  includes an explicit `"none"` sentinel badge so a role can be cleared, since a radio
+  group can't be clicked back to empty otherwise.
+
+`handleProvision` computes the final `systemRole`/`workflowRoles` payload differently per
+branch: from `requestedRole` directly (`"Guest"` → `systemRole: "Guest"`, no workflow
+role; anything else → `systemRole: "Admin"`, `workflowRoles: [requestedRole]`) versus
+from the picker's local state. `provisionUserAction` still takes `workflowRoles:
+WorkflowRole[]` (the DB column stays `text[]`) — the UI just never sends more than one
+element.
+
+### SessionRefresher
+
+File: `src/app/(auth)/unauthorized/session-refresher.tsx`
+Last updated: 2026-07-08
+
+**Pattern notes:**
+Tiny auto-firing client redirect component — same `useTransition`-adjacent shape as
+`/pin`'s PIN-verify flow (`Loader2` spinner + `text-sm text-muted-foreground` copy),
+but calls its Server Action (`refreshSessionAction`) automatically on mount via
+`useEffect` instead of waiting on user input, then `router.push()`s on success. Used
+when a Server Component detects (via a fresh DB read) that the visible page is no
+longer valid for the user's current state, and the fix requires patching the live
+JWT before navigating on. Reuse this shape for any other "state changed out-of-band,
+resolve automatically on next load" case rather than a manual "click to continue"
+button.
 
 ### Entry format
 
