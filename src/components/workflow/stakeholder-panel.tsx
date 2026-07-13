@@ -1,0 +1,257 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+
+import {
+  applyStakeholderApprovalAction,
+  requestDelegatedApprovalAction,
+  requestStakeholderApprovalAction,
+} from "@/actions/engagements";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  SignatureField,
+  type SignatureValue,
+} from "@/components/workflow/signature-field";
+import type { ApproverRole } from "@/lib/domain/types";
+import type { StakeholderApproval } from "@/lib/services/workflow-service";
+
+type StakeholderPanelProps = {
+  engagementId: string;
+  approvals: StakeholderApproval[];
+  approverName: string;
+  approveAs: ApproverRole | "Delegated" | null;
+  canRequestApproval: boolean;
+};
+
+export function StakeholderPanel({
+  engagementId,
+  approvals,
+  approverName,
+  approveAs,
+  canRequestApproval,
+}: StakeholderPanelProps) {
+  const [isPending, startTransition] = useTransition();
+  const [delegateOpen, setDelegateOpen] = useState(false);
+  const [delegateReason, setDelegateReason] = useState("");
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [name, setName] = useState(approverName);
+  const [signature, setSignature] = useState<SignatureValue | null>(null);
+  const [delegatedRole, setDelegatedRole] = useState<ApproverRole>("HCM");
+
+  const approval = approvals[0];
+
+  if (approval) {
+    return (
+      <Card className="flex flex-col gap-2 p-6">
+        <h2 className="text-lg font-semibold text-foreground">
+          Stakeholder Approval
+        </h2>
+        <p className="text-sm text-foreground">
+          Approved by {approval.approverName} ({approval.approverRole})
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {new Date(approval.approvedAt).toLocaleString()}
+        </p>
+        {approval.isDelegated && (
+          <Badge className="w-fit bg-status-warning-bg text-status-warning-fg">
+            Delegated approval
+          </Badge>
+        )}
+      </Card>
+    );
+  }
+
+  function handleRequestApproval() {
+    startTransition(async () => {
+      const result = await requestStakeholderApprovalAction(engagementId);
+      if (result.success) {
+        toast.success("Stakeholder approval requested");
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function handleRequestDelegated() {
+    startTransition(async () => {
+      const result = await requestDelegatedApprovalAction(
+        engagementId,
+        delegateReason,
+      );
+      if (result.success) {
+        toast.success("Delegated approval requested");
+        setDelegateOpen(false);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  const hasSignature = !!signature?.value.trim();
+
+  function handleApprove() {
+    if (!hasSignature) {
+      toast.error("Capture a signature first");
+      return;
+    }
+    startTransition(async () => {
+      const result = await applyStakeholderApprovalAction(engagementId, {
+        approverName: name,
+        signature: JSON.stringify(signature),
+        delegatedApproverRole:
+          approveAs === "Delegated" ? delegatedRole : undefined,
+      });
+      if (result.success) {
+        toast.success("Engagement approved");
+        setApproveOpen(false);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  return (
+    <Card className="flex flex-col gap-4 p-6">
+      <h2 className="text-lg font-semibold text-foreground">
+        Stakeholder Approval
+      </h2>
+      <p className="text-sm text-muted-foreground">
+        Awaiting approval from HCM, GMM, or DMD.
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        {canRequestApproval && (
+          <>
+            <Button loading={isPending} onClick={handleRequestApproval}>
+              Request Approval
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDelegateOpen(true)}
+            >
+              Request Delegated Approval
+            </Button>
+          </>
+        )}
+        {approveAs && (
+          <Button onClick={() => setApproveOpen(true)}>Approve</Button>
+        )}
+      </div>
+
+      <Dialog open={delegateOpen} onOpenChange={setDelegateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Request Delegated Approval</DialogTitle>
+            <DialogDescription>
+              Notifies HCM, GMM, DMD, and the System Administrator that all
+              three approvers are unavailable.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label>Reason *</Label>
+            <Textarea
+              value={delegateReason}
+              onChange={(e) => setDelegateReason(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDelegateOpen(false)}
+              disabled={isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRequestDelegated}
+              loading={isPending}
+              disabled={!delegateReason}
+            >
+              Send Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Approve Engagement</DialogTitle>
+            <DialogDescription>
+              Your name and signature will be recorded with the approval
+              timestamp.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            {approveAs === "Delegated" && (
+              <div className="flex flex-col gap-2">
+                <Label>Approving as *</Label>
+                <Select
+                  value={delegatedRole}
+                  onValueChange={(v) => setDelegatedRole(v as ApproverRole)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="HCM">HCM</SelectItem>
+                    <SelectItem value="GMM">GMM</SelectItem>
+                    <SelectItem value="DMD">DMD</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <Label>Approval Name *</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Signature *</Label>
+              <SignatureField value={signature} onChange={setSignature} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setApproveOpen(false)}
+              disabled={isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleApprove}
+              loading={isPending}
+              disabled={!hasSignature}
+            >
+              Confirm Approval
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}

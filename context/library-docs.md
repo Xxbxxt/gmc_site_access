@@ -49,6 +49,35 @@ needed for this single call. Requires `Mail.Send` **Application** permission
 (admin-consented) on the App Registration, separate from the delegated `User.Read`
 permission used for sign-in.
 
+## Azure Blob Storage (`@azure/storage-blob`)
+
+`src/lib/azure/blob.ts` uses **shared-key auth** via
+`AZURE_STORAGE_CONNECTION_STRING` (`BlobServiceClient.fromConnectionString`) —
+not the AAD/`ClientSecretCredential` approach used for Graph mail. This was a
+deliberate switch (2026-07-09) from an earlier AAD-based design once local dev
+was actually being set up with a connection string from the Storage account's
+Access Keys blade rather than an RBAC role assignment; simpler to get working
+for this project's stage. SAS URLs are generated with a
+`StorageSharedKeyCredential` built by parsing the account name/key back out of
+the same connection string (`generateBlobSASQueryParameters` needs a
+credential object, not just the client) — the account key is stored in `.env`
+and effectively used for both plumbing and SAS generation, unlike the
+account-key-free approach used before. `uploadBlob` calls
+`containerClient.createIfNotExists()` so the container doesn't need to be
+created manually in the Portal first. Blob path:
+`engagements/{engagementId}/{docType}/{filename}` inside the container named
+by `AZURE_STORAGE_CONTAINER_NAME`.
+
+## react-day-picker / date-fns (shadcn `Calendar` + `DatePicker`)
+
+Both arrived automatically via `pnpm dlx shadcn@latest add calendar` (not a
+manual `pnpm add`) — `Calendar` (`src/components/ui/calendar.tsx`) is generated
+on top of `react-day-picker`; `src/components/ui/date-picker.tsx` uses
+`date-fns`'s `format`/`parseISO` only, to convert between `Date` (what
+`Calendar` works with) and the `yyyy-MM-dd` strings this project's Postgres
+`date` columns use everywhere else. Don't reach for either package directly
+outside `date-picker.tsx` — build on that component instead.
+
 ## Drizzle casing
 
 `drizzle.config.ts` and `src/lib/db/client.ts` both set `casing: "snake_case"` so JS

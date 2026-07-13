@@ -1,5 +1,8 @@
+import Link from "next/link";
+
 import { UserRow } from "@/app/dashboard/system-admin/users/user-row";
 import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -30,6 +33,13 @@ export default async function AdminUsersPage() {
       <PageHeader
         title="Staff Users"
         subtitle="Provision access and manage PINs for GMC staff."
+        actions={
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/system-admin/delegations">
+              Delegated Approvals
+            </Link>
+          </Button>
+        }
       />
       <div className="overflow-x-auto bg-card">
         {sortedUsers.length === 0 ? (

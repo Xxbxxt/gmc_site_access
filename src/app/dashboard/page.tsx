@@ -2,8 +2,9 @@ import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
 
-// Only the admin dashboard exists in Slice 1. When workflow-layer dashboards
-// land (Reception, Hospital, ...), route here by the user's workflow roles.
+// Route to each role's workflow dashboard as it ships. Roles without a
+// dashboard yet (Hospital, Training, Security, IT) fall through to the
+// "coming soon" placeholder below.
 export default async function DashboardPage() {
   const session = await getSession();
   if (!session) {
@@ -11,6 +12,13 @@ export default async function DashboardPage() {
   }
   if (session.systemRole === "SystemAdmin") {
     redirect("/dashboard/system-admin/users");
+  }
+  if (
+    (["Receptionist", "HCM", "GMM", "DMD"] as const).some((role) =>
+      session.workflowRoles.includes(role),
+    )
+  ) {
+    redirect("/dashboard/reception");
   }
 
   return (

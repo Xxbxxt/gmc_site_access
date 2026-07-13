@@ -34,12 +34,41 @@ After building any component: update this file immediately. Do not batch updates
 | RadioGroup | `src/components/ui/radio-group.tsx` | 2026-07-08 |
 | Badge | `src/components/ui/badge.tsx` | 2026-07-08 |
 | Dialog | `src/components/ui/dialog.tsx` | 2026-07-08 |
+| Select | `src/components/ui/select.tsx` | 2026-07-09 |
+| Checkbox | `src/components/ui/checkbox.tsx` | 2026-07-09 |
+| Textarea | `src/components/ui/textarea.tsx` | 2026-07-09 |
+| Tabs | `src/components/ui/tabs.tsx` | 2026-07-09 |
+| Calendar | `src/components/ui/calendar.tsx` | 2026-07-09 |
+| Popover | `src/components/ui/popover.tsx` | 2026-07-09 |
 
-**Not installed (tried, removed as unused):** `Select` and `Checkbox` were briefly added
-for the Provision dialog, then removed — the RadioGroup+Badge pattern below replaced both
-(single-select reads better as a badge stack than a `<select>`, and workflow role turned
-out to need single-select too, not a checkbox multi-select — see Provision Dialog notes).
-Don't reinstall either without a fresh reason; check here first.
+**Button `ref` prop (2026-07-09):** Added `ref?: React.Ref<HTMLButtonElement>`
+to `ButtonProps` and pass it straight to the underlying `Comp` — React 19's
+"ref as a prop" support means no `forwardRef` wrapper is needed, just a typed
+`ref` field read like any other prop. Needed because shadcn's generated
+`Calendar` component renders its prev/next nav buttons as `<Button ref={...}>`
+internally; without this the Calendar install type-errors against this
+project's customized `Button` (which dropped `forwardRef` for the `loading`
+prop rewrite in Slice 1). Any other component that needs to forward a ref to
+`Button` now works the same way.
+
+**Calendar/Popover → date-fns + react-day-picker:** Installing `Calendar` pulled
+in `date-fns` and `react-day-picker` as dependencies automatically (shadcn CLI,
+not a manual `pnpm add`) — expected, since Calendar is generated on top of
+`react-day-picker` and `DatePicker` (below) uses `date-fns`'s `format`/`parseISO`
+to convert to/from the `yyyy-MM-dd` strings this project's `date` columns use.
+
+**Select / Checkbox history:** Both were briefly added for the Provision dialog in
+Slice 1, then removed — the RadioGroup+Badge pattern below replaced both there
+(single-select reads better as a badge stack than a `<select>`, and workflow role
+turned out to need single-select too, not a checkbox multi-select — see Provision
+Dialog notes). Reinstalled 2026-07-09 for Slice 2's Reception form, where they're
+the correct fit: `Select` for real dropdowns (employment status, gender, access
+level, etc.) and `Checkbox` for true multi-select/boolean fields (applicable
+document picker, Section 6 confirmations) — the Provision dialog's narrow
+single-choice-from-a-small-set case doesn't generalize to every dropdown or
+checkbox in the app. Use the small badge-radio pattern only for that specific
+single-choice-badge-stack use case; use plain `Select`/`Checkbox`/`RadioGroup`
+(default styling, no Badge wrapper) for standard form fields.
 
 **Table:** `TableHead`/`TableCell` are customized in-file (same precedent as
 `DropdownMenu` below) to match `ui-rules.md`'s Tables convention out of the box —
@@ -318,6 +347,249 @@ JWT before navigating on. Reuse this shape for any other "state changed out-of-b
 resolve automatically on next load" case rather than a manual "click to continue"
 button.
 
+### ReceptionForm
+
+File: `src/components/workflow/reception-form.tsx`
+Last updated: 2026-07-09
+
+**Pattern notes:**
+First use of `react-hook-form` + `@hookform/resolvers/zod` in this codebase —
+both were already approved/installed dependencies but unused until this form's
+~35 fields made per-field `useState` unwieldy. Internal (non-exported) field
+helpers — `TextField`, `TextAreaField`, `SelectField`, `YesNoField`,
+`CheckboxField` — wrap `FormField`/`FormItem`/`FormLabel`/`FormControl`/
+`FormMessage` around one shadcn primitive each, keyed by `FieldPath<ReceptionFormValues>`.
+Field-type → component mapping: dropdowns → `Select`, binary yes/no → plain
+`RadioGroup` (default styling, **not** the Badge-wrapped variant — that one's
+reserved for the auth role-selector), checkboxes → `Checkbox`, multi-line text →
+`Textarea`. `applicableDocuments` is wired via a raw `Controller` (not one of the
+field helpers) so it can hand `value`/`onChange` straight to `DocumentSelector`,
+keeping that component RHF-agnostic and reusable outside this form. `readOnly`
+disables every field and hides the submit button rather than swapping to a
+separate read-only renderer — simpler, and shadcn's disabled styling already
+communicates the state. One form serves both create (`/reception/new`, no
+`engagementId`) and edit (`/reception/[id]`) — it calls `submitReceptionAction`
+or `updateReceptionDataAction` depending on whether `engagementId` is set, then
+`router.push`es to the new detail page on create.
+
+**Duplicate-passport guard (2026-07-09):** `persons.passport_no` is unique, but
+a passport being reused for a genuinely new visit is correct (Person is a
+reusable identity — see `project_overview.md`); what isn't correct is starting
+a second engagement while an earlier one for that passport is still in
+progress. `lookupPersonByPassportAction` (fired by "Look up") now also returns
+`activeEngagementId` from `getActiveEngagementForPassport` (workflow-service.ts
+— any state except `Completed`/`Cancelled` counts as active); when set, a
+persistent `Alert` (`variant="destructive"`, `Alert` is for exactly this kind
+of standing page state, not `sonner`) appears under the passport field with a
+link to the existing record, and the submit button disables via
+`disabled={!!activeEngagementId}`. A `useEffect` on `form.watch("passportNo")`
+clears the flag the moment the Receptionist edits the passport number again,
+so a stale warning never lingers after a correction. This is a client-side
+convenience only — `createEngagement` enforces the same check server-side
+regardless of whether "Look up" was ever clicked, throwing a human-readable
+error surfaced via the existing `error.message` toast path.
+
+### SignaturePad
+
+File: `src/components/workflow/signature-pad.tsx`
+Last updated: 2026-07-09
+
+**Pattern notes:**
+Three capture modes behind a shadcn `Tabs` (Draw / Upload / Type) — only the
+draw surface itself is hand-rolled (native `<canvas>` + pointer events); shadcn
+has no drawing primitive and none was needed as a library. Value shape is
+`{ mode: "draw" | "upload" | "type"; value: string }`, serialized with
+`JSON.stringify` into the `stakeholder_approvals.signature` text column (kept as
+one column rather than adding a `signature_mode` column, since the mode is only
+ever needed alongside the value for rendering, never queried on its own).
+`disabled` swaps to `SignaturePreview` (an `<img>` for draw/upload, plain text
+for typed) instead of rendering inert controls.
+
+### DocumentSelector
+
+File: `src/components/workflow/document-selector.tsx`
+Last updated: 2026-07-09
+
+**Pattern notes:**
+`Checkbox` per applicable document type (shadcn, not hand-rolled); each row is
+`flex items-center justify-between` — checkbox + label on the left, the upload
+slot (once checked) appears immediately at the far right of the **same** row,
+not stacked below it (revised 2026-07-09 — the original stacked layout read as
+sluggish/unclear about which document an upload button belonged to). The
+upload slot's trigger is a hidden native `<input type="file">` opened via a
+`Button`'s `onClick` — shadcn has no drop-zone/file-input primitive, so this is
+a documented exception (same precedent as `Table`'s in-file
+`TableHead`/`TableCell` tweaks). Posts directly to `/api/documents` via `fetch`
++ `FormData` (not a Server Action — file uploads are API-route-only per
+`architecture.md`). "View" fetches a fresh SAS URL from
+`GET /api/documents/[documentId]` and opens it in a new tab rather than caching
+the URL, since SAS URLs expire after 15 minutes.
+
+**Create-mode uploads before the engagement exists (2026-07-09):** `documents.engagementId`
+is a required FK, so a real upload can't happen until the engagement row
+exists — but the record isn't created until the whole Reception form is
+submitted. Rather than blocking the checkbox behind "save first" (confusing —
+nothing else in the form is gated that way), checking a box on `/reception/new`
+now reveals `PendingUploadSlot` instead of `UploadSlot`: it lets the user pick
+a file immediately via the same hidden-`<input type="file">` pattern, but only
+holds the `File` object in memory (lifted up to `reception-form.tsx`'s
+`pendingFiles` state via `onPendingFilesChange` — no network call yet).
+`reception-form.tsx`'s `onSubmit` creates the engagement first, then loops
+over `pendingFiles` POSTing each to `/api/documents` with the new
+`engagementId` before redirecting to the detail page — same upload path,
+just sequenced after creation instead of before. On `/reception/[id]`
+(`engagementId` already known) `DocumentSelector` renders `UploadSlot` as
+before, uploading immediately on selection.
+
+**Post-upload state + view/delete (2026-07-09):** Once a document exists
+(`uploaded` truthy), `UploadSlot` swaps the "Upload file" button + "Required"
+label for the filename itself as underlined link text (`text-primary
+underline`, parsed from the blob URL's last path segment via
+`fileNameFromUrl`) plus two ghost icon buttons — `EyeIcon` (same view/SAS-URL
+fetch as before) and `Trash2Icon` (calls the new `DELETE
+/api/documents/[documentId]` → `deleteDocument` → `document-service.ts`,
+which removes both the blob via `deleteBlob` and the DB row — confirmed via
+`window.confirm`, same precedent as `CancelEngagementButton`/`handleResetPin`
+for a plain destructive yes/no with no extra data entry). `PendingUploadSlot`
+mirrors this for create-mode: once a file is chosen, "Choose file" + Required
+swap for the filename (underlined, opens a local `URL.createObjectURL`
+preview — revoked on unmount/replacement via `useEffect` to avoid leaking
+object URLs) + Eye/Trash icons, where Trash just clears that `docType` out of
+`pendingFiles` (no network call, nothing's been uploaded yet).
+
+**Why `router.refresh()` matters here:** both upload and delete are plain
+`fetch` calls from a Client Component, not Server Actions — so unlike the rest
+of this app's mutations, nothing automatically revalidates the Server
+Component page that owns `uploadedDocuments`. Every upload and delete handler
+calls `router.refresh()` on success so the parent page re-fetches and the slot
+actually reflects the new state — this was the root cause of "nothing visibly
+changes after a successful upload" before this pass.
+
+### StakeholderPanel
+
+File: `src/components/workflow/stakeholder-panel.tsx`
+Last updated: 2026-07-09
+
+**Pattern notes:**
+Branches on whether `approvals[0]` exists: an approval summary card if so,
+otherwise action buttons gated by two props computed server-side from session +
+engagement state (`canRequestApproval`, `approveAs`) — the component itself
+holds no authorization logic. Two `Dialog`s (delegated-approval request, approve
+with `SignaturePad`) follow the `user-row.tsx` Provision Dialog precedent
+(`DialogHeader`/`DialogFooter`, Cancel/Confirm). The delegated-badge on an
+approved record uses a literal Tailwind class string
+(`bg-status-warning-bg text-status-warning-fg`) rather than interpolating the
+bucket name — Tailwind v4's scanner needs the full class name to appear
+literally in source to generate it; same reason the Reception queue page keeps
+a `Record<WorkflowState, string>` of full class strings instead of building
+`` `bg-status-${bucket}-bg` `` at runtime.
+
+### DatePicker
+
+File: `src/components/ui/date-picker.tsx`
+Last updated: 2026-07-09
+
+**Pattern notes:**
+shadcn's own composed date-picker recipe — a `Popover` trigger `Button`
+(`variant="outline"`, shows the formatted date or a placeholder, `CalendarIcon`
+prefix) opening a `PopoverContent` with `Calendar` (`mode="single"`). Value/
+`onChange` are plain `yyyy-MM-dd` strings (via `date-fns` `format`/`parseISO`),
+matching this project's Postgres `date` columns exactly (Drizzle's `date()`
+column defaults to string mode) — no `Date` objects cross the component
+boundary. Placed in `components/ui/` rather than `components/workflow/` since
+it's a generic reusable primitive with no business logic, same precedent as
+`SubmitButton`. Replaced the native `<input type="date">` used for
+`dateOfBirth`/`arrivalDate`/`departureDate` in `reception-form.tsx` — check
+here before reaching for a native date input anywhere else in the app.
+
+### PhoneInput
+
+File: `src/components/workflow/phone-input.tsx`
+Last updated: 2026-07-09
+
+**Pattern notes:**
+Revised 2026-07-09 after design feedback — the code segment must stay
+**freely typable** (not locked to a picklist) and the dropdown must show
+**only dial codes, never country names**. Neither requirement fits shadcn
+`Select` (locks the value to one of its items, and its trigger always renders
+the matched item's full children). So this is a compound native `<input>` +
+`<input>` inside one shared bordered box (`rounded-md border border-input`,
+`focus-within:ring-1 ring-ring` — mirrors `Input`'s own focus styling since
+neither segment can be a real `Input` without fighting its own border/padding
+inside a merged box), split by a single `border-r border-input` divider; the
+code segment gets `bg-accent` to set it apart per the mock. The dropdown
+**is** the shadcn `Popover` (not hand-rolled) — its content is a plain
+deduped list of `DIAL_CODES` (from `COUNTRY_CALLING_CODES`, names stripped),
+each a plain button that overwrites the code input's value on click; picking
+one is a shortcut, not a constraint — the code input still accepts anything
+typed directly. Combined value is stored as one `"+233 244123456"`-shaped
+string (split on the first space in `splitValue`) so it still fits the
+schema's single `text()` phone columns — no schema change needed. Replaces
+free-typed phone `TextField`s in `reception-form.tsx` (`phone`,
+`telephoneOnSite`, `emergencyContactPhone`, `companyEmergencyTel`).
+
+### Text casing enforcement (`toTitleCase` / `toSentenceCase`)
+
+File: `src/lib/utils.ts`
+
+**Pattern notes:**
+Two pure string helpers, applied inside `reception-form.tsx`'s `TextField`/
+`TextAreaField` on every `onChange` (transform-before-`field.onChange`, not a
+separate validation step) so free-caps typing is structurally impossible
+rather than just flagged after the fact: `toTitleCase` capitalizes each word's
+first letter and forces the rest lowercase (used for name-like fields via
+`casing="title"` — `fullName`, `emergencyContactName`, `companyName`,
+`contactNameMonthly`, `companyEmergencyName`, `gmcLiaisonPerson`);
+`toSentenceCase` capitalizes only the first letter of the string and after
+sentence-ending punctuation, forcing everything else lowercase (the default,
+`casing="sentence"`, for free-text fields like `reasonForRequest`, `remarks`).
+Fields excluded entirely via `casing="none"`: `passportNo` (identifier),
+`email`/`contactEmail` (case-sensitive-ish, must not be mangled). Dropdown-
+backed fields (`Select`/`RadioGroup`/`Checkbox`) and `PhoneInput`/`DatePicker`
+never need a casing mode — only free-text `Input`/`Textarea` do.
+
+### CancelEngagementButton
+
+File: `src/components/workflow/cancel-engagement-button.tsx`
+Last updated: 2026-07-09
+
+**Pattern notes:**
+Replaced the earlier `TerminateButton` (2026-07-09) after clarifying that
+"cancel an engagement" and "request access termination" are two different
+SRS-level concepts, not one relabeled button: cancelling is a Receptionist
+soft-delete of a still-unapproved Reception record (no System Admin
+involved, no reason needed) — "Request Termination" (below, in
+`reception-row.tsx`) is the separate, SRS-mandated System-Admin-approval flow
+for revoking access that's already progressed. Uses `window.confirm` for its
+confirmation, not a `Dialog` — same precedent as `user-row.tsx`'s
+`handleResetPin`: a plain yes/no with no extra data entry doesn't need a full
+dialog. Rendered in `[engagementId]/page.tsx`'s `PageHeader` `actions` slot,
+gated on the same `canRequestApproval` condition as the approval actions
+(`workflowState === "AtReception"` and not yet approved) — matches the new
+`cancelEngagement` service guard exactly.
+
+### ReceptionRow (row actions + Request Termination)
+
+File: `src/app/dashboard/(workflow)/reception/reception-row.tsx`
+Last updated: 2026-07-09
+
+**Pattern notes:**
+"Request Termination" moved here (2026-07-09) from the engagement detail page
+to the queue table's row-actions dropdown, following the exact
+`user-row.tsx` "Row actions pattern" already documented above (ghost
+`size="icon"` `Button` + `MoreHorizontalIcon` + `DropdownMenu align="end"`).
+The Actions `TableHead`/`TableCell` only render at all when the viewer
+`canManage` (Receptionist, non-Guest) — that flag comes from the page and is
+the same for every row in one render, so column count never differs row to
+row; within a rendered column, a row's cell is left empty (no dropdown) when
+`workflowState` is `Cancelled` or `Completed` (nothing left to terminate).
+The dropdown's one item opens a `Dialog` with a required reason `Textarea`
+(this one **does** need a dialog + reason, unlike `CancelEngagementButton`,
+since it triggers the real SRS termination-request workflow that notifies
+the System Administrator) and calls the existing `requestTerminationAction`.
+Also owns the exported `WORKFLOW_STATE_BADGE` map (moved from `page.tsx`),
+now including `Cancelled → danger` bucket.
+
 ### Entry format
 
 ```
@@ -335,7 +607,7 @@ Last updated: YYYY-MM-DD
 | Text — secondary | |
 | Spacing | |
 | Hover state | |
-| Shadow | |
+| Shadow | none — this system never uses `shadow-*` |
 | Status / accent usage | |
 
 **Pattern notes:**

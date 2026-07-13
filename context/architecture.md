@@ -376,7 +376,7 @@ Access: private containers; upload via `app/api/documents/`; view via short-live
 
 Defined as typed string unions in `src/lib/domain/types.ts`.
 
-**workflow_state:** `Draft`, `AtReception`, `AtHospital`, `AtTraining`, `AtSecurity`, `AwaitingProvisioning`, `Completed`
+**workflow_state:** `Draft`, `AtReception`, `AtHospital`, `AtTraining`, `AtSecurity`, `AwaitingProvisioning`, `Completed`, `Cancelled` (Receptionist-initiated soft-cancel of a still-unapproved Reception record — distinct from `access_state`'s termination path, which applies to records that have already progressed; added during Slice 2's build)
 
 **access_state:** `Pending`, `Active`, `Expired`, `TerminationRequested`, `Terminated`
 

@@ -129,9 +129,9 @@ automatically routes to the correct next layer.
 | Table | Key columns |
 |---|---|
 | `persons` | id, passport_no (unique), full_name, date_of_birth, gender, nationality, email, phone, emergency_contact_name, emergency_contact_phone |
-| `engagements` | id, person_id (FK), access_purpose, arrival_date, departure_date, workflow_state, access_state, is_visa_flagged, reception_data (jsonb), created_at |
+| `engagements` | id, person_id (FK), access_purpose, arrival_date, departure_date, workflow_state, access_state, is_visa_flagged, reception_data (jsonb), created_at, **delegated_approver_id (nullable FK), delegation_granted_by (nullable FK), delegation_granted_at (nullable), delegation_reason (nullable)** — added during Slice 2 build to hold an active, not-yet-consumed delegated-approval grant between System Admin grant and Receptionist use |
 | `documents` | id, engagement_id (FK), workflow_cycle_id (nullable FK), doc_type, blob_url, uploaded_by (FK → staff_users), uploaded_at |
-| `stakeholder_approvals` | id, engagement_id (FK), approver_role, approver_staff_user_id (FK), approver_name, signature, approved_at |
+| `stakeholder_approvals` | id, engagement_id (FK), approver_role, approver_staff_user_id (FK), approver_name, signature, approved_at, **is_delegated, delegated_by (nullable FK), delegated_at (nullable), delegation_reason (nullable)** — added during Slice 2 build to record a consumed delegated approval |
 | `workflow_cycles` | id, engagement_id (FK), cycle_number, archived_at (nullable) |
 | `workflow_transitions` | id, engagement_id (FK), workflow_cycle_id (FK), from_state, to_state, performed_by (FK), performed_at, comments — **append-only, never delete** |
 | `termination_requests` | id, engagement_id (FK), requested_by (FK), reason, status, decided_by (nullable FK), decided_at (nullable) |
@@ -201,7 +201,7 @@ When all three approvers are unavailable:
 
 ### Server Actions
 
-`src/actions/engagements.ts` — `submitReception`, `requestStakeholderApproval`, `requestDelegatedApproval`, `requestTermination`
+`src/actions/engagements.ts` — `lookupPersonByPassport`, `submitReception`, `updateReceptionData`, `requestStakeholderApproval`, **`applyStakeholderApproval`** (missing from this list originally — the service function was planned but no action/UI ever called it until the Slice 2 build added it), `requestDelegatedApproval`, `requestTermination`
 
 `src/actions/admin.ts` additions — `grantDelegatedApproval`, `revokeDelegatedApproval`
 
@@ -215,16 +215,21 @@ When all three approvers are unavailable:
 
 ### Done when
 
-- [ ] Returning visitor passport lookup pre-fills all Person fields
-- [ ] New visitor: Person + Engagement created in one submission
-- [ ] All 6 sections validate; required fields block record from advancing
-- [ ] Applicable document selector works; non-selected types not required
-- [ ] Documents reach Azure Blob; SAS URL renders the file in-browser
-- [ ] "Request Approval" notifies all three stakeholders simultaneously via dashboard + email
-- [ ] Any one stakeholder approval routes the record correctly (work → Hospital, visit-only → Completed, visit+mine → Training)
-- [ ] Delegated approval full loop: request → grant → Receptionist approves → audit row written
-- [ ] Termination request creates row + notifies System Admin
-- [ ] Guest Receptionists see queue read-only; no form actions rendered
+- [x] Returning visitor passport lookup pre-fills all Person fields
+- [x] New visitor: Person + Engagement created in one submission
+- [x] All 6 sections validate; required fields block record from advancing
+- [x] Applicable document selector works; non-selected types not required
+- [x] Documents reach Azure Blob; SAS URL renders the file in-browser
+- [x] "Request Approval" notifies all three stakeholders simultaneously via dashboard + email
+- [x] Any one stakeholder approval routes the record correctly (work → Hospital, visit-only → Completed, visit+mine → Training)
+- [x] Delegated approval full loop: request → grant → Receptionist approves → audit row written
+- [x] Termination request creates row + notifies System Admin
+- [x] Guest Receptionists see queue read-only; no form actions rendered
+
+Built (code + `tsc --noEmit` + `pnpm build` all clean) but not yet exercised in a
+live browser — Azure Blob/Graph credentials aren't configured in this
+environment. Ask the user to verify the above end-to-end in-browser per
+`CLAUDE.md` (agent does not start a dev server).
 
 ---
 
