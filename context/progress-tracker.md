@@ -90,9 +90,132 @@ longer query Drizzle directly, per `architecture.md`'s invariants)
 
 ---
 
-## Slice 2 — Reception 🔲
+## Slice 2 — Reception ✅
 
-*Not started. Start after Slice 1 verification is complete.*
+**Built as a prerequisite for Slice 3** — see
+`.claude/plans/plan-and-build-slice-playful-brook.md` for the full plan,
+including two schema additions beyond `architecture.md`'s original spec:
+`engagements` gained 4 nullable delegation-grant columns (`delegatedApproverId`,
+`delegationGrantedBy`, `delegationGrantedAt`, `delegationReason`) to hold an
+active-but-not-yet-consumed delegated approval grant, and
+`stakeholder_approvals` gained `isDelegated`/`delegatedBy`/`delegatedAt`/
+`delegationReason` to record a consumed one. `architecture.md` and
+`build-plan.md` should be treated as needing a follow-up sync pass for these
+columns and for the `applyStakeholderApproval`/`applyStakeholderApprovalAction`
+pairing that build-plan.md's original Server Actions list omitted.
+
+**UI refinement pass (2026-07-09):** `Calendar`/`Popover` installed for a
+shadcn-based `DatePicker` (replaces native `<input type="date">`); added
+`PhoneInput` — a compound native code input + number input sharing one
+bordered box (`bg-accent` code side, `Popover`-driven codes-only quick-pick
+that overwrites but never restricts the freely-typable code field); added
+`toTitleCase`/`toSentenceCase` casing enforcement on every free-text field in
+the Reception form (full-caps typing is now structurally impossible); visa
+type changed from free text to a `Select`; `remarks` is no longer required;
+`document-selector.tsx`'s upload button moved onto the same row as its
+checkbox (far right) instead of stacking below, and create-mode (`/reception/new`)
+now lets the user pick a file the instant a box is checked instead of
+requiring the record to be saved first — the file is held in memory and
+uploaded right after the engagement is created, same as before just
+resequenced; `Button` gained a typed `ref` prop (React 19 ref-as-prop, no
+`forwardRef`) since shadcn's `Calendar` forwards a `ref` to its nav buttons.
+See `ui-registry.md` for full pattern notes on each.
+
+**Cancel vs. Terminate split (2026-07-09):** What was briefly a "Terminate
+Access" → "Cancel Engagement" relabel turned out to be two genuinely
+different features, not one renamed button. Added: `workflowState`
+`"Cancelled"` (soft-cancel — the engagement row and all its child rows stay
+intact for audit, `workflow_transitions` gets a normal append-only row, per
+`architecture.md`'s "never delete audit rows" invariant), `cancelEngagement`/
+`cancelEngagementAction` (Receptionist-only, no reason, only while
+`AtReception` and unapproved, confirmed via `window.confirm` — see
+`CancelEngagementButton`), and moved the original SRS "Request Termination"
+flow (System Admin approval, unchanged `requestTerminationAction`/
+`termination_requests`) onto the Reception queue table as a row action (see
+`ReceptionRow`) instead of the engagement detail page. `ui-tokens.md`'s
+status-bucket table and `architecture.md`'s `workflow_state` list both updated
+for `Cancelled`.
+
+**Duplicate-passport guard (2026-07-09):** A passport reused for a genuinely
+new visit (prior engagement already `Completed`/`Cancelled`) is intentional —
+Person is a reusable identity. Blocked instead: starting a second engagement
+while an earlier one for that passport is still active (any other
+`workflowState`). Enforced in `createEngagement` (`workflow-service.ts`,
+throws a human-readable error either way) and surfaced early via "Look up" —
+see `ui-registry.md`'s `ReceptionForm` notes.
+
+**Blob Storage auth switched to connection string (2026-07-09):** Actual local
+dev setup used a Storage account connection string (Access Keys blade), not
+the AAD role-assignment approach originally documented — `blob.ts` now reads
+`AZURE_STORAGE_CONNECTION_STRING` + `AZURE_STORAGE_CONTAINER_NAME` (shared-key
+auth, `BlobServiceClient.fromConnectionString`) instead of
+`AZURE_STORAGE_ACCOUNT_URL` + `AZURE_TENANT_ID`/`CLIENT_ID`/`CLIENT_SECRET` +
+a user-delegation SAS key. See `library-docs.md` for the updated pattern.
+Uploads should now actually work end-to-end once `.env` has a real connection
+string and container name.
+
+**Document upload feedback + delete (2026-07-09):** Root cause of "upload
+looks like it does nothing" — the upload/view flow used plain `fetch` from a
+Client Component, so the Server Component page never re-fetched
+`uploadedDocuments` after a successful upload. Both `UploadSlot` and
+`PendingUploadSlot` now call `router.refresh()` on success, and once a
+document exists it's shown as its filename (underlined link) with `Eye`
+(view) and `Trash` (delete) icon buttons instead of a static "Required" label.
+Delete is a new capability end-to-end: `deleteBlob` (`lib/azure/blob.ts`),
+`deleteDocument` (`document-service.ts`), `DELETE /api/documents/[documentId]`.
+See `ui-registry.md`'s `DocumentSelector` notes.
+
+**Approve dialog simplified to signature-only (2026-07-14):** the Approve
+modal in `stakeholder-panel.tsx` no longer asks any approver to type their
+name or (delegates only) pick "Approving as HCM/GMM/DMD" — both were fake
+data since the session already knows who's approving and, for direct
+stakeholders, their role. `ApproverRole` (`lib/domain/types.ts`) gained a
+`"Delegated"` member; `applyStakeholderApproval` derives `approverName`/
+`approverRole` server-side instead of taking them as client input. See
+`ui-registry.md`'s `StakeholderPanel` notes.
+
+### Schema
+- [x] `persons`, `engagements`, `documents`, `stakeholder_approvals`,
+      `workflow_cycles`, `workflow_transitions`, `termination_requests` tables
+- [x] `notifications.engagement_id` now a real FK → `engagements.id`
+
+### Azure Blob
+- [x] `src/lib/azure/blob.ts` — `uploadBlob`, `generateSasUrl` (user-delegation
+      SAS, 15 min expiry, lazily-constructed client so build/typecheck don't
+      require live Azure credentials)
+- [x] `src/app/api/documents/route.ts` (upload) +
+      `src/app/api/documents/[documentId]/route.ts` (SAS view URL — added
+      during the build, not in the original plan table, needed to satisfy
+      "uploaded doc opens via SAS URL")
+
+### Services
+- [x] `person-registry-service.ts`, `workflow-service.ts`, `document-service.ts`
+
+### shadcn/ui
+- [x] `Select`, `Checkbox`, `Textarea`, `Tabs` installed — see
+      `ui-registry.md`'s Select/Checkbox history note
+
+### Pages + components
+- [x] `dashboard/(workflow)/reception/` — queue, `new`, `[engagementId]`
+- [x] `reception-form.tsx`, `document-selector.tsx`, `stakeholder-panel.tsx`,
+      `signature-pad.tsx`, `terminate-button.tsx`
+- [x] `system-admin/delegations/` — grant/revoke UI
+- [x] `dashboard/page.tsx` root routing extended: Receptionist/HCM/GMM/DMD →
+      `/dashboard/reception`
+
+### Server Actions
+- [x] `actions/engagements.ts` — `lookupPersonByPassportAction`,
+      `submitReceptionAction`, `updateReceptionDataAction`,
+      `requestStakeholderApprovalAction`, `applyStakeholderApprovalAction`,
+      `requestDelegatedApprovalAction`, `requestTerminationAction`
+- [x] `actions/admin.ts` additions — `grantDelegatedApprovalAction`,
+      `revokeDelegatedApprovalAction`
+
+### Verification
+- [x] `tsc --noEmit` clean
+- [x] `pnpm build` clean (all Reception + delegation routes registered)
+- [ ] Manual in-browser walkthrough of the Slice 2 Done-when checklist — ask
+      the user to verify (agent does not start a dev server per `CLAUDE.md`)
 
 ---
 

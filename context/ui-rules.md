@@ -108,12 +108,13 @@ flex items-center justify-between mb-6
 Every content section lives in a card.
 
 ```
-bg-card border border-border rounded-xl p-6 shadow-sm
+bg-card border border-border rounded-xl p-6
 ```
 
 - Never use colored card backgrounds — always white
 - Color goes inside cards via badges, indicators, and text — never on the card surface
 - Never nest cards inside cards
+- Never use box-shadow — separation comes from `border-border`, not elevation
 
 ---
 
@@ -218,3 +219,4 @@ flex flex-col items-center justify-center py-16 text-center
 - Never nest cards inside cards
 - Never use `position: fixed` for page content — use normal document flow
 - Never put business logic inside UI components
+- Never use `shadow-*` (box-shadow) on any shadcn/ui component — flat surfaces only, separation via `border-border`

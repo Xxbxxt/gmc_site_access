@@ -1,0 +1,311 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+
+import { requirePinConfirmed, requireWriteAccess } from "@/lib/auth/guards";
+import type { ActionResult } from "@/lib/domain/types";
+import { sendEmail } from "@/lib/email/send";
+import {
+  delegatedApprovalRequestedTemplate,
+  stakeholderApprovalReceivedTemplate,
+  stakeholderApprovalRequestedTemplate,
+  terminationRequestedTemplate,
+} from "@/lib/email/templates";
+import { findPersonByPassport } from "@/lib/services/person-registry-service";
+import {
+  applyStakeholderApproval,
+  cancelEngagement,
+  createEngagement,
+  getActiveEngagementForPassport,
+  getEngagementDetail,
+  type ReceptionFormInput,
+  requestDelegatedApproval,
+  requestTermination,
+  submitForStakeholderApproval,
+  updateReceptionData,
+} from "@/lib/services/workflow-service";
+
+export type PassportLookupResult = {
+  person: {
+    fullName: string;
+    dateOfBirth: string;
+    gender: string;
+    nationality: string;
+    email: string;
+    phone: string;
+    emergencyContactName: string;
+    emergencyContactPhone: string;
+  };
+  activeEngagementId: string | null;
+};
+
+export async function lookupPersonByPassportAction(
+  passportNo: string,
+): Promise<PassportLookupResult | null> {
+  try {
+    await requireWriteAccess("Receptionist");
+    const person = await findPersonByPassport(passportNo);
+    if (!person) {
+      return null;
+    }
+    const active = await getActiveEngagementForPassport(passportNo);
+    return {
+      person: {
+        fullName: person.fullName,
+        dateOfBirth: person.dateOfBirth,
+        gender: person.gender,
+        nationality: person.nationality,
+        email: person.email,
+        phone: person.phone,
+        emergencyContactName: person.emergencyContactName,
+        emergencyContactPhone: person.emergencyContactPhone,
+      },
+      activeEngagementId: active?.engagementId ?? null,
+    };
+  } catch (error) {
+    console.error("[actions/engagements]", error);
+    return null;
+  }
+}
+
+export async function submitReceptionAction(
+  payload: ReceptionFormInput,
+): Promise<
+  | { success: true; engagementId: string; warning?: string }
+  | { success: false; error: string }
+> {
+  try {
+    const session = await requireWriteAccess("Receptionist");
+    const engagement = await createEngagement(payload, session.staffUserId);
+    revalidatePath("/dashboard/reception");
+    return { success: true, engagementId: engagement.id };
+  } catch (error) {
+    console.error("[actions/engagements]", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to create engagement",
+    };
+  }
+}
+
+export async function updateReceptionDataAction(
+  engagementId: string,
+  payload: ReceptionFormInput,
+): Promise<ActionResult> {
+  try {
+    await requireWriteAccess("Receptionist");
+    await updateReceptionData(engagementId, payload);
+    revalidatePath(`/dashboard/reception/${engagementId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/engagements]", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to save changes",
+    };
+  }
+}
+
+export async function cancelEngagementAction(
+  engagementId: string,
+): Promise<ActionResult> {
+  try {
+    const session = await requireWriteAccess("Receptionist");
+    await cancelEngagement(engagementId, session.staffUserId);
+    revalidatePath("/dashboard/reception");
+    revalidatePath(`/dashboard/reception/${engagementId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/engagements]", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to cancel engagement",
+    };
+  }
+}
+
+export async function requestStakeholderApprovalAction(
+  engagementId: string,
+): Promise<ActionResult> {
+  try {
+    await requireWriteAccess("Receptionist");
+    const { recipients } = await submitForStakeholderApproval(engagementId);
+    const detail = await getEngagementDetail(engagementId);
+
+    let allSent = true;
+    if (detail) {
+      for (const recipient of recipients) {
+        const sent = await sendEmail({
+          to: recipient.email,
+          ...stakeholderApprovalRequestedTemplate({
+            personName: detail.person.fullName,
+            engagementId,
+          }),
+        });
+        if (!sent) allSent = false;
+      }
+    }
+
+    revalidatePath(`/dashboard/reception/${engagementId}`);
+    return allSent
+      ? { success: true }
+      : {
+          success: true,
+          warning:
+            "Approval requested, but some notification emails may not have sent",
+        };
+  } catch (error) {
+    console.error("[actions/engagements]", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to request approval",
+    };
+  }
+}
+
+export async function applyStakeholderApprovalAction(
+  engagementId: string,
+  input: {
+    signature: string;
+  },
+): Promise<ActionResult> {
+  try {
+    const session = await requirePinConfirmed();
+    if (session.systemRole === "Guest") {
+      return { success: false, error: "Read-only access — cannot approve" };
+    }
+
+    const { recipients, nextRole } = await applyStakeholderApproval(
+      engagementId,
+      session,
+      input,
+      session.staffUserId,
+    );
+    const detail = await getEngagementDetail(engagementId);
+
+    let allSent = true;
+    if (detail && nextRole) {
+      for (const recipient of recipients) {
+        const sent = await sendEmail({
+          to: recipient.email,
+          ...stakeholderApprovalReceivedTemplate({
+            personName: detail.person.fullName,
+            engagementId,
+            nextRole,
+          }),
+        });
+        if (!sent) allSent = false;
+      }
+    }
+
+    revalidatePath(`/dashboard/reception/${engagementId}`);
+    return allSent
+      ? { success: true }
+      : {
+          success: true,
+          warning: "Approved, but some notification emails may not have sent",
+        };
+  } catch (error) {
+    console.error("[actions/engagements]", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to approve",
+    };
+  }
+}
+
+export async function requestDelegatedApprovalAction(
+  engagementId: string,
+  reason: string,
+): Promise<ActionResult> {
+  try {
+    await requireWriteAccess("Receptionist");
+    if (!reason) {
+      return { success: false, error: "Reason is required" };
+    }
+
+    const { recipients } = await requestDelegatedApproval(engagementId, reason);
+    const detail = await getEngagementDetail(engagementId);
+
+    let allSent = true;
+    if (detail) {
+      for (const recipient of recipients) {
+        const sent = await sendEmail({
+          to: recipient.email,
+          ...delegatedApprovalRequestedTemplate({
+            personName: detail.person.fullName,
+            engagementId,
+            reason,
+          }),
+        });
+        if (!sent) allSent = false;
+      }
+    }
+
+    revalidatePath(`/dashboard/reception/${engagementId}`);
+    return allSent
+      ? { success: true }
+      : {
+          success: true,
+          warning: "Requested, but some notification emails may not have sent",
+        };
+  } catch (error) {
+    console.error("[actions/engagements]", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to request delegated approval",
+    };
+  }
+}
+
+export async function requestTerminationAction(
+  engagementId: string,
+  reason: string,
+): Promise<ActionResult> {
+  try {
+    const session = await requireWriteAccess("Receptionist");
+    if (!reason) {
+      return { success: false, error: "Reason is required" };
+    }
+
+    const { recipients } = await requestTermination(
+      engagementId,
+      session.staffUserId,
+      reason,
+    );
+    const detail = await getEngagementDetail(engagementId);
+
+    let allSent = true;
+    if (detail) {
+      for (const recipient of recipients) {
+        const sent = await sendEmail({
+          to: recipient.email,
+          ...terminationRequestedTemplate({
+            personName: detail.person.fullName,
+            engagementId,
+            reason,
+          }),
+        });
+        if (!sent) allSent = false;
+      }
+    }
+
+    revalidatePath(`/dashboard/reception/${engagementId}`);
+    return allSent
+      ? { success: true }
+      : {
+          success: true,
+          warning:
+            "Termination requested, but some notification emails may not have sent",
+        };
+  } catch (error) {
+    console.error("[actions/engagements]", error);
+    return { success: false, error: "Failed to request termination" };
+  }
+}

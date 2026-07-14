@@ -12,9 +12,14 @@ import type {
 import { sendEmail } from "@/lib/email/send";
 import {
   accessApprovedTemplate,
+  delegatedApprovalGrantedTemplate,
   pinResetTemplate,
 } from "@/lib/email/templates";
 import { provisionStaffUser } from "@/lib/services/auth-service";
+import {
+  grantDelegatedApproval,
+  revokeDelegatedApproval,
+} from "@/lib/services/workflow-service";
 
 export async function provisionUserAction(
   staffUserId: string,
@@ -53,6 +58,57 @@ export async function provisionUserAction(
   } catch (error) {
     console.error("[actions/admin]", error);
     return { success: false, error: "Failed to provision user" };
+  }
+}
+
+export async function grantDelegatedApprovalAction(
+  engagementId: string,
+  receptionistStaffUserId: string,
+  reason: string,
+): Promise<ActionResult> {
+  try {
+    const session = await requireSystemAdmin();
+    const { recipient } = await grantDelegatedApproval(
+      engagementId,
+      receptionistStaffUserId,
+      session.staffUserId,
+      reason,
+    );
+
+    const emailSent = recipient
+      ? await sendEmail({
+          to: recipient.email,
+          ...delegatedApprovalGrantedTemplate({
+            recipientName: recipient.displayName,
+            engagementId,
+          }),
+        })
+      : true;
+
+    revalidatePath("/dashboard/system-admin/delegations");
+    return emailSent
+      ? { success: true }
+      : {
+          success: true,
+          warning: "Granted, but the notification email failed to send",
+        };
+  } catch (error) {
+    console.error("[actions/admin]", error);
+    return { success: false, error: "Failed to grant delegated approval" };
+  }
+}
+
+export async function revokeDelegatedApprovalAction(
+  engagementId: string,
+): Promise<ActionResult> {
+  try {
+    await requireSystemAdmin();
+    await revokeDelegatedApproval(engagementId);
+    revalidatePath("/dashboard/system-admin/delegations");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/admin]", error);
+    return { success: false, error: "Failed to revoke delegated approval" };
   }
 }
 

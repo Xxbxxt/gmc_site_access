@@ -39,6 +39,7 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   loading?: boolean;
+  ref?: React.Ref<HTMLButtonElement>;
 }
 
 function Button({
@@ -49,11 +50,13 @@ function Button({
   loading = false,
   disabled,
   children,
+  ref,
   ...props
 }: ButtonProps) {
   const Comp = asChild ? Slot : "button";
   return (
     <Comp
+      ref={ref}
       className={cn(buttonVariants({ variant, size, className }))}
       disabled={disabled || loading}
       aria-busy={loading || undefined}

@@ -71,7 +71,7 @@ className="bg-blue-600 text-gray-500"
   --status-warning-bg:        48 96% 89%;
   --status-warning-fg:        32 95% 24%;
 
-  /* Workflow status — danger (Rejected, Terminated, Expired, Unfit) */
+  /* Workflow status — danger (Rejected, Terminated, Expired, Unfit, Cancelled) */
   --status-danger:            0 84% 60%;
   --status-danger-bg:         0 86% 96%;
   --status-danger-fg:         0 74% 35%;
@@ -192,7 +192,7 @@ Map every workflow and access state to a bucket — never assign colors per indi
 |---|---|
 | Active, Completed, Fit | `success` |
 | Pending, Flagged, TerminationRequested, FitWithConditions | `warning` |
-| Rejected, Terminated, Expired, Unfit | `danger` |
+| Rejected, Terminated, Expired, Unfit, Cancelled | `danger` |
 | AtReception, AtHospital, AtTraining, AtSecurity, AtIT | `info` |
 | Draft, AwaitingProvisioning | `neutral` |
 
@@ -236,7 +236,7 @@ Badge classes: `bg-status-{bucket}-bg text-status-{bucket}-fg`
 
 ### Cards
 ```
-bg-card border border-border rounded-xl p-6 shadow-sm
+bg-card border border-border rounded-xl p-6
 ```
 
 ### Buttons (shadcn/ui variants)
@@ -276,3 +276,4 @@ row:     text-sm text-foreground px-4 py-3 border-b border-border hover:bg-muted
 - Status badges always use the 5-bucket system — never assign colors per individual state
 - All borders default to `border-border` — never use `border-gray-*`
 - Focus rings always use `ring-ring` — never custom ring colors
+- Never use `shadow-*` (box-shadow) on any shadcn/ui component — surfaces are flat; separation comes from `border-border`
