@@ -42,7 +42,7 @@ export type DocType =
   | "assignment_letter"
   | "insurance_proof";
 
-export type ApproverRole = "HCM" | "GMM" | "DMD";
+export type ApproverRole = "HCM" | "GMM" | "DMD" | "Delegated";
 
 export type VisaType =
   | "Tourist Visa"

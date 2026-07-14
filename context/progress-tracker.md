@@ -165,6 +165,15 @@ Delete is a new capability end-to-end: `deleteBlob` (`lib/azure/blob.ts`),
 `deleteDocument` (`document-service.ts`), `DELETE /api/documents/[documentId]`.
 See `ui-registry.md`'s `DocumentSelector` notes.
 
+**Approve dialog simplified to signature-only (2026-07-14):** the Approve
+modal in `stakeholder-panel.tsx` no longer asks any approver to type their
+name or (delegates only) pick "Approving as HCM/GMM/DMD" — both were fake
+data since the session already knows who's approving and, for direct
+stakeholders, their role. `ApproverRole` (`lib/domain/types.ts`) gained a
+`"Delegated"` member; `applyStakeholderApproval` derives `approverName`/
+`approverRole` server-side instead of taking them as client input. See
+`ui-registry.md`'s `StakeholderPanel` notes.
+
 ### Schema
 - [x] `persons`, `engagements`, `documents`, `stakeholder_approvals`,
       `workflow_cycles`, `workflow_transitions`, `termination_requests` tables

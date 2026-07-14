@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -369,27 +370,6 @@ export function ReceptionForm({
           <h2 className="text-lg font-semibold text-foreground">
             Visitor Details
           </h2>
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <TextField
-                control={form.control}
-                name="passportNo"
-                label="Passport No."
-                casing="none"
-                disabled={disabled || !!engagementId}
-              />
-            </div>
-            {allowLookup && !engagementId && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleLookup}
-                loading={isLookingUp}
-              >
-                Look up
-              </Button>
-            )}
-          </div>
           {activeEngagementId && (
             <Alert variant="destructive">
               <AlertTitle>
@@ -406,248 +386,269 @@ export function ReceptionForm({
               </AlertDescription>
             </Alert>
           )}
-          <SelectField
-            control={form.control}
-            name="employmentStatus"
-            label="Employment Status"
-            options={["Employee", "Contractor", "Visitor(Expatriate)"]}
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="fullName"
-            label="Full Name"
-            casing="title"
-            disabled={disabled}
-          />
-          <DateField
-            control={form.control}
-            name="dateOfBirth"
-            label="Date of Birth"
-            disabled={disabled}
-          />
-          <SelectField
-            control={form.control}
-            name="gender"
-            label="Gender"
-            options={["Male", "Female", "Other"]}
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="nationality"
-            label="Nationality"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="email"
-            label="Email Address"
-            type="email"
-            casing="none"
-            disabled={disabled}
-          />
-          <PhoneField
-            control={form.control}
-            name="phone"
-            label="Telephone No. (Off Site)"
-            disabled={disabled}
-          />
-          <PhoneField
-            control={form.control}
-            name="telephoneOnSite"
-            label="Telephone No. (On Site)"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="emergencyContactName"
-            label="Emergency Contact Name"
-            casing="title"
-            disabled={disabled}
-          />
-          <PhoneField
-            control={form.control}
-            name="emergencyContactPhone"
-            label="Emergency Contact No."
-            disabled={disabled}
-          />
-          <SelectField
-            control={form.control}
-            name="accessPurpose"
-            label="Access Purpose"
-            options={["Work", "Visit", "VisitMine"]}
-            optionLabels={{
-              Work: "Coming to work",
-              Visit: "Coming to visit (no mine site access)",
-              VisitMine: "Coming to visit + mine site access",
-            }}
-            disabled={disabled}
-          />
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+            <PassportField
+              control={form.control}
+              disabled={disabled || !!engagementId}
+              showLookup={allowLookup && !engagementId}
+              isLookingUp={isLookingUp}
+              onLookup={handleLookup}
+            />
+            <SelectField
+              control={form.control}
+              name="employmentStatus"
+              label="Employment Status"
+              options={["Employee", "Contractor", "Visitor(Expatriate)"]}
+              disabled={disabled}
+            />
+            <TextField
+              control={form.control}
+              name="fullName"
+              label="Full Name"
+              casing="title"
+              disabled={disabled}
+            />
+            <DateField
+              control={form.control}
+              name="dateOfBirth"
+              label="Date of Birth"
+              disabled={disabled}
+            />
+            <SelectField
+              control={form.control}
+              name="gender"
+              label="Gender"
+              options={["Male", "Female", "Other"]}
+              disabled={disabled}
+            />
+            <TextField
+              control={form.control}
+              name="nationality"
+              label="Nationality"
+              disabled={disabled}
+            />
+            <TextField
+              control={form.control}
+              name="email"
+              label="Email Address"
+              type="email"
+              casing="none"
+              disabled={disabled}
+            />
+            <PhoneField
+              control={form.control}
+              name="phone"
+              label="Telephone No. (Off Site)"
+              disabled={disabled}
+            />
+            <PhoneField
+              control={form.control}
+              name="telephoneOnSite"
+              label="Telephone No. (On Site)"
+              disabled={disabled}
+            />
+            <TextField
+              control={form.control}
+              name="emergencyContactName"
+              label="Emergency Contact Name"
+              casing="title"
+              disabled={disabled}
+            />
+            <PhoneField
+              control={form.control}
+              name="emergencyContactPhone"
+              label="Emergency Contact No."
+              disabled={disabled}
+            />
+            <SelectField
+              control={form.control}
+              name="accessPurpose"
+              label="Access Purpose"
+              options={["Work", "Visit", "VisitMine"]}
+              optionLabels={{
+                Work: "Coming to work",
+                Visit: "Coming to visit (no mine site access)",
+                VisitMine: "Coming to visit + mine site access",
+              }}
+              disabled={disabled}
+            />
+          </div>
         </Card>
 
         <Card className="flex flex-col gap-4 p-6">
           <h2 className="text-lg font-semibold text-foreground">
             Company Details
           </h2>
-          <TextField
-            control={form.control}
-            name="companyName"
-            label="Company Name"
-            casing="title"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="contactNameMonthly"
-            label="Contact Name (Monthly Reporting)"
-            casing="title"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="contactEmail"
-            label="Contact Email Address"
-            type="email"
-            casing="none"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="companyEmergencyName"
-            label="Emergency Contact (Company)"
-            casing="title"
-            disabled={disabled}
-          />
-          <PhoneField
-            control={form.control}
-            name="companyEmergencyTel"
-            label="Emergency Tel. (Company)"
-            disabled={disabled}
-          />
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+            <div className="col-span-2">
+              <TextField
+                control={form.control}
+                name="companyName"
+                label="Company Name"
+                casing="title"
+                disabled={disabled}
+              />
+            </div>
+            <TextField
+              control={form.control}
+              name="contactNameMonthly"
+              label="Contact Name (Monthly Reporting)"
+              casing="title"
+              disabled={disabled}
+            />
+            <TextField
+              control={form.control}
+              name="contactEmail"
+              label="Contact Email Address"
+              type="email"
+              casing="none"
+              disabled={disabled}
+            />
+            <TextField
+              control={form.control}
+              name="companyEmergencyName"
+              label="Emergency Contact (Company)"
+              casing="title"
+              disabled={disabled}
+            />
+            <PhoneField
+              control={form.control}
+              name="companyEmergencyTel"
+              label="Emergency Tel. (Company)"
+              disabled={disabled}
+            />
+          </div>
         </Card>
 
         <Card className="flex flex-col gap-4 p-6">
           <h2 className="text-lg font-semibold text-foreground">
             Access Details
           </h2>
-          <TextField
-            control={form.control}
-            name="gmcLiaisonPerson"
-            label="GMC Liaison Person"
-            casing="title"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="gmcLiaisonDept"
-            label="GMC Liaison Department"
-            disabled={disabled}
-          />
-          <DateField
-            control={form.control}
-            name="arrivalDate"
-            label="Date of Arrival"
-            disabled={disabled}
-          />
-          <DateField
-            control={form.control}
-            name="departureDate"
-            label="Date of Departure"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="reasonForRequest"
-            label="Reason for Request"
-            disabled={disabled}
-          />
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+            <TextField
+              control={form.control}
+              name="gmcLiaisonPerson"
+              label="GMC Liaison Person"
+              casing="title"
+              disabled={disabled}
+            />
+            <TextField
+              control={form.control}
+              name="gmcLiaisonDept"
+              label="GMC Liaison Department"
+              disabled={disabled}
+            />
+            <DateField
+              control={form.control}
+              name="arrivalDate"
+              label="Date of Arrival"
+              disabled={disabled}
+            />
+            <DateField
+              control={form.control}
+              name="departureDate"
+              label="Date of Departure"
+              disabled={disabled}
+            />
+            <div className="col-span-2">
+              <TextAreaField
+                control={form.control}
+                name="reasonForRequest"
+                label="Reason for Request"
+                disabled={disabled}
+              />
+            </div>
+          </div>
         </Card>
 
         <Card className="flex flex-col gap-4 p-6">
           <h2 className="text-lg font-semibold text-foreground">
             Site Support Requirements
           </h2>
-          <YesNoField
-            control={form.control}
-            name="airportPickup"
-            label="Airport Pickup / Protocol Required"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="transportTo"
-            label="Transport Required To"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="transportFrom"
-            label="Transport Required From"
-            disabled={disabled}
-          />
-          <YesNoField
-            control={form.control}
-            name="accommodationRequired"
-            label="Accommodation Required"
-            disabled={disabled}
-          />
-          <YesNoField
-            control={form.control}
-            name="permanentAccessBadge"
-            label="Permanent Access Badge"
-            disabled={disabled}
-          />
-          <YesNoField
-            control={form.control}
-            name="ghanaVisaRequired"
-            label="Ghana Visa Required"
-            disabled={disabled}
-          />
-          <YesNoField
-            control={form.control}
-            name="generalSiteInduction"
-            label="General Site Induction"
-            disabled={disabled}
-          />
-          <TextField
-            control={form.control}
-            name="otherInductions"
-            label="Other Inductions / Training"
-            disabled={disabled}
-          />
-          <YesNoField
-            control={form.control}
-            name="bringingEquipment"
-            label="Bringing Equipment on Site"
-            disabled={disabled}
-          />
-          <YesNoField
-            control={form.control}
-            name="ppeRequired"
-            label="PPE Required"
-            disabled={disabled}
-          />
-          <YesNoField
-            control={form.control}
-            name="itAccessRequired"
-            label="IT Access Required"
-            disabled={disabled}
-          />
-          <SelectField
-            control={form.control}
-            name="visaType"
-            label="Visa Type"
-            options={VISA_TYPE_OPTIONS}
-            disabled={disabled}
-          />
-          <SelectField
-            control={form.control}
-            name="accessLevel"
-            label="Access Level"
-            options={ACCESS_LEVEL_OPTIONS}
-            disabled={disabled}
-          />
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+            <YesNoField
+              control={form.control}
+              name="airportPickup"
+              label="Airport Pickup / Protocol Required"
+              disabled={disabled}
+            />
+            <YesNoField
+              control={form.control}
+              name="accommodationRequired"
+              label="Accommodation Required"
+              disabled={disabled}
+            />
+            <YesNoField
+              control={form.control}
+              name="permanentAccessBadge"
+              label="Permanent Access Badge"
+              disabled={disabled}
+            />
+            <YesNoField
+              control={form.control}
+              name="ghanaVisaRequired"
+              label="Ghana Visa Required"
+              disabled={disabled}
+            />
+            <YesNoField
+              control={form.control}
+              name="generalSiteInduction"
+              label="General Site Induction"
+              disabled={disabled}
+            />
+            <YesNoField
+              control={form.control}
+              name="bringingEquipment"
+              label="Bringing Equipment on Site"
+              disabled={disabled}
+            />
+            <YesNoField
+              control={form.control}
+              name="ppeRequired"
+              label="PPE Required"
+              disabled={disabled}
+            />
+            <YesNoField
+              control={form.control}
+              name="itAccessRequired"
+              label="IT Access Required"
+              disabled={disabled}
+            />
+            <TextField
+              control={form.control}
+              name="transportTo"
+              label="Transport Required To"
+              disabled={disabled}
+            />
+            <TextField
+              control={form.control}
+              name="transportFrom"
+              label="Transport Required From"
+              disabled={disabled}
+            />
+            <div className="col-span-2">
+              <TextField
+                control={form.control}
+                name="otherInductions"
+                label="Other Inductions / Training"
+                disabled={disabled}
+              />
+            </div>
+            <SelectField
+              control={form.control}
+              name="visaType"
+              label="Visa Type"
+              options={VISA_TYPE_OPTIONS}
+              disabled={disabled}
+            />
+            <SelectField
+              control={form.control}
+              name="accessLevel"
+              label="Access Level"
+              options={ACCESS_LEVEL_OPTIONS}
+              disabled={disabled}
+            />
+          </div>
         </Card>
 
         <Card className="flex flex-col gap-4 p-6">
@@ -762,6 +763,61 @@ function TextField<TName extends FieldPath<ReceptionFormValues>>({
   );
 }
 
+function PassportField({
+  control,
+  disabled,
+  showLookup,
+  isLookingUp,
+  onLookup,
+}: {
+  control: Control<ReceptionFormValues>;
+  disabled?: boolean;
+  showLookup: boolean;
+  isLookingUp: boolean;
+  onLookup: () => void;
+}) {
+  return (
+    <FormField
+      control={control}
+      name="passportNo"
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>Passport No. *</FormLabel>
+          <FormControl>
+            <div className="flex h-11 items-stretch rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
+              <input
+                {...field}
+                value={field.value as string}
+                disabled={disabled}
+                onChange={(e) =>
+                  field.onChange(applyCasing(e.target.value, "none"))
+                }
+                className={`flex-1 bg-transparent px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 ${showLookup ? "rounded-l-md" : "rounded-md"}`}
+              />
+              {showLookup && (
+                <button
+                  type="button"
+                  onClick={onLookup}
+                  disabled={disabled || isLookingUp}
+                  aria-label="Look up passport"
+                  className="flex items-center justify-center rounded-r-md border-l border-input px-3 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isLookingUp ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <SearchIcon className="size-4" />
+                  )}
+                </button>
+              )}
+            </div>
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+}
+
 function TextAreaField<TName extends FieldPath<ReceptionFormValues>>({
   control,
   name,
@@ -847,6 +903,7 @@ function PhoneField<TName extends FieldPath<ReceptionFormValues>>({
           </FormLabel>
           <FormControl>
             <PhoneInput
+              ref={field.ref}
               value={field.value as string}
               onChange={field.onChange}
               disabled={disabled}

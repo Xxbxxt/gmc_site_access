@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requirePinConfirmed, requireWriteAccess } from "@/lib/auth/guards";
-import type { ActionResult, ApproverRole } from "@/lib/domain/types";
+import type { ActionResult } from "@/lib/domain/types";
 import { sendEmail } from "@/lib/email/send";
 import {
   delegatedApprovalRequestedTemplate,
@@ -81,7 +81,11 @@ export async function submitReceptionAction(
     return { success: true, engagementId: engagement.id };
   } catch (error) {
     console.error("[actions/engagements]", error);
-    return { success: false, error: "Failed to create engagement" };
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to create engagement",
+    };
   }
 }
 
@@ -165,9 +169,7 @@ export async function requestStakeholderApprovalAction(
 export async function applyStakeholderApprovalAction(
   engagementId: string,
   input: {
-    approverName: string;
     signature: string;
-    delegatedApproverRole?: ApproverRole;
   },
 ): Promise<ActionResult> {
   try {

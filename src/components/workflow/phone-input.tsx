@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDownIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type Ref, useMemo, useState } from "react";
 
 import {
   Popover,
@@ -15,6 +15,7 @@ type PhoneInputProps = {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  ref?: Ref<HTMLInputElement>;
 };
 
 const DIAL_CODES = Array.from(
@@ -34,7 +35,12 @@ function splitValue(value: string): { code: string; number: string } {
   };
 }
 
-export function PhoneInput({ value, onChange, disabled }: PhoneInputProps) {
+export function PhoneInput({
+  value,
+  onChange,
+  disabled,
+  ref,
+}: PhoneInputProps) {
   const [open, setOpen] = useState(false);
   const { code, number } = useMemo(() => splitValue(value), [value]);
 
@@ -47,7 +53,7 @@ export function PhoneInput({ value, onChange, disabled }: PhoneInputProps) {
   }
 
   return (
-    <div className="flex items-stretch rounded-md border border-input bg-background shadow-xs focus-within:ring-1 focus-within:ring-ring">
+    <div className="flex h-11 items-stretch rounded-md border border-input bg-background focus-within:ring-1 focus-within:ring-ring">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverAnchor asChild>
           <div className="flex items-center gap-1 rounded-l-md border-r border-input bg-accent pr-1.5 pl-3">
@@ -88,6 +94,7 @@ export function PhoneInput({ value, onChange, disabled }: PhoneInputProps) {
         </PopoverContent>
       </Popover>
       <input
+        ref={ref}
         value={number}
         onChange={(e) => updateNumber(e.target.value.replace(/[^\d\s-]/g, ""))}
         disabled={disabled}

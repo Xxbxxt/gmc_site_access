@@ -55,7 +55,7 @@ export default async function ReceptionDetailPage({
     !isGuest &&
     engagement.delegatedApproverId !== null &&
     engagement.delegatedApproverId === session.staffUserId;
-  const approveAs: ApproverRole | "Delegated" | null = noApprovalYet
+  const approveAs: ApproverRole | null = noApprovalYet
     ? (directRole ?? (isDelegatedApprover ? "Delegated" : null))
     : null;
   const canRequestApproval = noApprovalYet && isReceptionist;
@@ -80,7 +80,6 @@ export default async function ReceptionDetailPage({
     <div>
       <PageHeader
         title={person.fullName}
-        subtitle={`Passport ${person.passportNo} — ${engagement.workflowState}`}
         actions={
           canRequestApproval ? (
             <CancelEngagementButton engagementId={engagementId} />
@@ -97,7 +96,6 @@ export default async function ReceptionDetailPage({
         <StakeholderPanel
           engagementId={engagementId}
           approvals={approvals}
-          approverName={session.displayName ?? ""}
           approveAs={approveAs}
           canRequestApproval={canRequestApproval}
         />

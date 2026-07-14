@@ -19,15 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   SignatureField,
@@ -39,15 +31,13 @@ import type { StakeholderApproval } from "@/lib/services/workflow-service";
 type StakeholderPanelProps = {
   engagementId: string;
   approvals: StakeholderApproval[];
-  approverName: string;
-  approveAs: ApproverRole | "Delegated" | null;
+  approveAs: ApproverRole | null;
   canRequestApproval: boolean;
 };
 
 export function StakeholderPanel({
   engagementId,
   approvals,
-  approverName,
   approveAs,
   canRequestApproval,
 }: StakeholderPanelProps) {
@@ -55,9 +45,7 @@ export function StakeholderPanel({
   const [delegateOpen, setDelegateOpen] = useState(false);
   const [delegateReason, setDelegateReason] = useState("");
   const [approveOpen, setApproveOpen] = useState(false);
-  const [name, setName] = useState(approverName);
   const [signature, setSignature] = useState<SignatureValue | null>(null);
-  const [delegatedRole, setDelegatedRole] = useState<ApproverRole>("HCM");
 
   const approval = approvals[0];
 
@@ -117,10 +105,7 @@ export function StakeholderPanel({
     }
     startTransition(async () => {
       const result = await applyStakeholderApprovalAction(engagementId, {
-        approverName: name,
         signature: JSON.stringify(signature),
-        delegatedApproverRole:
-          approveAs === "Delegated" ? delegatedRole : undefined,
       });
       if (result.success) {
         toast.success("Engagement approved");
@@ -201,37 +186,12 @@ export function StakeholderPanel({
           <DialogHeader>
             <DialogTitle>Approve Engagement</DialogTitle>
             <DialogDescription>
-              Your name and signature will be recorded with the approval
-              timestamp.
+              Your signature will be recorded with the approval timestamp.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4">
-            {approveAs === "Delegated" && (
-              <div className="flex flex-col gap-2">
-                <Label>Approving as *</Label>
-                <Select
-                  value={delegatedRole}
-                  onValueChange={(v) => setDelegatedRole(v as ApproverRole)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="HCM">HCM</SelectItem>
-                    <SelectItem value="GMM">GMM</SelectItem>
-                    <SelectItem value="DMD">DMD</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="flex flex-col gap-2">
-              <Label>Approval Name *</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Signature *</Label>
-              <SignatureField value={signature} onChange={setSignature} />
-            </div>
+          <div className="flex flex-col gap-2">
+            <Label>Signature *</Label>
+            <SignatureField value={signature} onChange={setSignature} />
           </div>
           <DialogFooter>
             <Button

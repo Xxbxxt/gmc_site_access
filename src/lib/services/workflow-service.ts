@@ -322,9 +322,7 @@ export async function applyStakeholderApproval(
   engagementId: string,
   session: SessionUser,
   input: {
-    approverName: string;
     signature: string;
-    delegatedApproverRole?: ApproverRole;
   },
   performedBy: string,
 ): Promise<{
@@ -360,16 +358,14 @@ export async function applyStakeholderApproval(
     throw new Error("Not authorized to approve this engagement");
   }
 
-  const approverRole = directRole ?? input.delegatedApproverRole;
-  if (!approverRole) {
-    throw new Error("Select which role this delegated approval covers");
-  }
+  const approverRole: ApproverRole = directRole ?? "Delegated";
+  const approverName = session.displayName ?? "";
 
   await db.insert(stakeholderApprovals).values({
     engagementId,
     approverRole,
     approverStaffUserId: session.staffUserId,
-    approverName: input.approverName,
+    approverName,
     signature: input.signature,
     isDelegated: isDelegatedApprover,
     delegatedBy: isDelegatedApprover ? engagement.delegationGrantedBy : null,
@@ -404,7 +400,7 @@ export async function applyStakeholderApproval(
     fromState: "AtReception",
     toState: nextState,
     performedBy,
-    comments: `Approved by ${input.approverName} (${approverRole})`,
+    comments: `Approved by ${approverName} (${approverRole})`,
   });
 
   let recipients: StaffUser[] = [];

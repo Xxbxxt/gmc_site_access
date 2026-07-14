@@ -468,7 +468,7 @@ changes after a successful upload" before this pass.
 ### StakeholderPanel
 
 File: `src/components/workflow/stakeholder-panel.tsx`
-Last updated: 2026-07-09
+Last updated: 2026-07-14
 
 **Pattern notes:**
 Branches on whether `approvals[0]` exists: an approval summary card if so,
@@ -483,6 +483,20 @@ bucket name — Tailwind v4's scanner needs the full class name to appear
 literally in source to generate it; same reason the Reception queue page keeps
 a `Record<WorkflowState, string>` of full class strings instead of building
 `` `bg-status-${bucket}-bg` `` at runtime.
+
+**Approve dialog is signature-only (2026-07-14):** previously asked every
+approver — direct stakeholder and delegated alike — to also type an "Approval
+Name" and (delegated only) pick "Approving as HCM/GMM/DMD". Both were fake
+data: the session already knows exactly who is approving and, for a direct
+stakeholder, which role they hold (`workflow-roles` invariant — one workflow
+role per staff user); a delegate isn't actually HCM/GMM/DMD and shouldn't claim
+to be. `applyStakeholderApproval` (`workflow-service.ts`) now derives
+`approverName` from `session.displayName` and `approverRole` from the caller's
+own direct role, falling back to the literal `"Delegated"` (added to the
+`ApproverRole` union in `lib/domain/types.ts`) — neither is client input
+anymore. The dialog itself is just `SignatureField` + Confirm/Cancel for both
+approver types; check here before adding an identity field back into any
+approval-style modal in this app.
 
 ### DatePicker
 
@@ -589,6 +603,78 @@ since it triggers the real SRS termination-request workflow that notifies
 the System Administrator) and calls the existing `requestTerminationAction`.
 Also owns the exported `WORKFLOW_STATE_BADGE` map (moved from `page.tsx`),
 now including `Cancelled → danger` bucket.
+
+### Field height + shadow standardization (2026-07-14)
+
+Files: `src/components/ui/input.tsx`, `src/components/ui/select.tsx`,
+`src/components/workflow/phone-input.tsx`,
+`src/components/ui/date-picker.tsx`
+
+**Pattern notes:**
+All single-line field controls now share `h-11` so a text `Input`, `Select`
+trigger, `PhoneInput` box, `PassportField` box, and `DatePicker` trigger
+button sit at the same height in a row — `SelectTrigger` previously
+hardcoded `h-9` (shadcn default), `PhoneInput`/`PassportField` had no
+explicit height at all (content-driven from padding, an unreliable match).
+`DatePicker`'s height is set via an explicit `h-11` className override on
+its trigger `Button`, not by changing `Button`'s own default size — that
+default is shared by every button in the app (submit, cancel, look-up) and
+those were never part of this ask. `Textarea` was bumped separately (not
+part of this height-parity set, since it's multi-line) to `min-h-44`.
+Also removed `shadow-xs`/`shadow-md` from every component that had it
+(`phone-input.tsx`, `PassportField`'s box, `popover.tsx`, `calendar.tsx`) —
+per explicit request, this app renders flat, no drop shadows anywhere.
+
+**`SelectContent` position (2026-07-14):** default was Radix's
+`position="item-aligned"`, which anchors the dropdown so the *currently
+selected item* lines up over the trigger — the panel's position and width
+shift depending on which option is selected and how far down the list it
+sits, producing visibly inconsistent placement across different `Select`
+instances (reported via screenshot: Visa Type vs. Access Level opening in
+different spots/widths). Changed the default to `position="popper"`, which
+anchors directly below the trigger and matches its width every time — the
+conventional shadcn default. This is a base-component change so every
+`Select` in the app (Visa Type, Access Level, Employment Status, Gender,
+Access Purpose, delegation role picker) is fixed at once.
+`transition-shadow`/`transition-[color,box-shadow]` classes elsewhere
+(`checkbox.tsx`, `radio-group.tsx`, `badge.tsx`, `textarea.tsx`,
+`select.tsx`) were left alone — they only declare which CSS properties
+animate and don't apply a shadow by themselves.
+
+### PassportField
+
+File: `src/components/workflow/reception-form.tsx`
+Last updated: 2026-07-14
+
+**Pattern notes:**
+Passport No. + its "Look up" trigger used to be a `TextField` next to an
+external `Button` in their own `flex` row, exempt from the section's field
+grid. Folded into the grid like every other field by embedding the lookup
+trigger *inside* the input's own bordered box, following `PhoneInput`'s
+"compound control sharing one border" precedent — a raw `<input>` plus a
+raw `<button>` (not the shadcn `Button`, to avoid a second nested
+border/background) side by side in one `rounded-md border border-input`
+box, divided by `border-l`. Shows `SearchIcon` normally, swaps to a
+spinning `Loader2` while `isLookingUp`. Only rendered when
+`showLookup` (`allowLookup && !engagementId`) — editing an existing
+engagement drops the button entirely and the input alone fills the box.
+
+### DesktopOnlyGuard
+
+File: `src/components/layout/desktop-only-guard.tsx`
+Last updated: 2026-07-14
+
+**Pattern notes:**
+This app has zero responsive breakpoints anywhere else — it's desktop-only
+by design, not "desktop-first responsive." Rather than detect viewport
+width in JS (hydration flash risk, extra client state), it's a pure-CSS
+`fixed inset-0 z-50` overlay that's `hidden` by default and switches to
+`flex` via `max-lg:flex` — Tailwind's `lg` breakpoint (1024px) was picked to
+line up with the dashboard shell's own `max-w-5xl` content column
+(`architecture.md`): below that width the shell's layout doesn't have room
+to render properly anyway. Mounted once in the root `layout.tsx` (alongside
+`Toaster`) so it covers every route, including the pre-dashboard auth
+pages — this is a device-capability gate, not a workflow-layer concern.
 
 ### Entry format
 
