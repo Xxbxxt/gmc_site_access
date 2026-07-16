@@ -75,8 +75,11 @@ manual `pnpm add`) — `Calendar` (`src/components/ui/calendar.tsx`) is generate
 on top of `react-day-picker`; `src/components/ui/date-picker.tsx` uses
 `date-fns`'s `format`/`parseISO` only, to convert between `Date` (what
 `Calendar` works with) and the `yyyy-MM-dd` strings this project's Postgres
-`date` columns use everywhere else. Don't reach for either package directly
-outside `date-picker.tsx` — build on that component instead.
+`date` columns use everywhere else. `calendar.tsx` and `date-picker.tsx` are
+the two exceptions that are allowed to import these packages directly — they
+*are* the wrapper. Application/feature code (forms, pages, everything outside
+`components/ui/`) should never reach for `react-day-picker` or `date-fns`
+directly — build on `DatePicker` instead.
 
 ## Drizzle casing
 

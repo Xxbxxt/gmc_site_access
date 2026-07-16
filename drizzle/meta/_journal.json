@@ -36,6 +36,13 @@
       "when": 1783598419054,
       "tag": "0004_nifty_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784031538901,
+      "tag": "0005_sour_psylocke",
+      "breakpoints": true
     }
   ]
 }

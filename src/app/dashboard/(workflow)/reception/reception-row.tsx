@@ -115,7 +115,13 @@ export function ReceptionRow({
         )}
       </TableRow>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setReason("");
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Request Termination</DialogTitle>
@@ -144,7 +150,7 @@ export function ReceptionRow({
               variant="destructive"
               onClick={handleSubmit}
               loading={isPending}
-              disabled={!reason}
+              disabled={!reason.trim()}
             >
               Submit Request
             </Button>

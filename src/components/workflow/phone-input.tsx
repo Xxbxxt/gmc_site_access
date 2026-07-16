@@ -59,7 +59,7 @@ export function PhoneInput({
           <div className="flex items-center gap-1 rounded-l-md border-r border-input bg-accent pr-1.5 pl-3">
             <input
               value={code}
-              onChange={(e) => updateCode(e.target.value)}
+              onChange={(e) => updateCode(e.target.value.replace(/\s/g, ""))}
               disabled={disabled}
               placeholder="+233"
               className="w-12 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"

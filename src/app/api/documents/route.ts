@@ -4,6 +4,22 @@ import { requireWriteAccess } from "@/lib/auth/guards";
 import type { DocType } from "@/lib/domain/types";
 import { uploadDocument } from "@/lib/services/document-service";
 
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+const DOC_TYPES: readonly DocType[] = [
+  "passport_biodata",
+  "valid_visa",
+  "mincom_letter",
+  "work_residence_permit",
+  "ghana_card",
+  "assignment_letter",
+  "insurance_proof",
+];
+
+function isDocType(value: string): value is DocType {
+  return (DOC_TYPES as readonly string[]).includes(value);
+}
+
 export async function POST(req: NextRequest) {
   let staffUserId: string;
   try {
@@ -13,6 +29,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { success: false, error: "Not authorized" },
       { status: 403 },
+    );
+  }
+
+  const contentLength = Number(req.headers.get("content-length"));
+  if (contentLength > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { success: false, error: "File exceeds the 10MB upload limit" },
+      { status: 413 },
     );
   }
 
@@ -33,9 +57,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!isDocType(docType)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid document type" },
+        { status: 400 },
+      );
+    }
+
     const document = await uploadDocument({
       engagementId,
-      docType: docType as DocType,
+      docType,
       file,
       uploadedBy: staffUserId,
     });

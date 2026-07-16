@@ -1,4 +1,4 @@
-import { and, arrayOverlaps, eq, notInArray } from "drizzle-orm";
+import { and, arrayOverlaps, desc, eq, isNull, notInArray } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import {
@@ -109,7 +109,14 @@ export async function getActiveWorkflowCycle(
   const [cycle] = await db
     .select()
     .from(workflowCycles)
-    .where(eq(workflowCycles.engagementId, engagementId));
+    .where(
+      and(
+        eq(workflowCycles.engagementId, engagementId),
+        isNull(workflowCycles.archivedAt),
+      ),
+    )
+    .orderBy(desc(workflowCycles.cycleNumber))
+    .limit(1);
   return cycle;
 }
 
@@ -177,47 +184,90 @@ export async function getActiveEngagementForPassport(
     : undefined;
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    !!error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "23505"
+  );
+}
+
+const ACTIVE_ENGAGEMENT_ERROR = (workflowState: string) =>
+  `This passport already has an active engagement (currently ${workflowState}) — open that record instead of creating a new one.`;
+
 export async function createEngagement(
   input: ReceptionFormInput,
   createdBy: string,
 ): Promise<Engagement> {
-  const active = await getActiveEngagementForPassport(input.person.passportNo);
-  if (active) {
-    throw new Error(
-      `This passport already has an active engagement (currently ${active.workflowState}) — open that record instead of creating a new one.`,
-    );
+  const preCheck = await getActiveEngagementForPassport(
+    input.person.passportNo,
+  );
+  if (preCheck) {
+    throw new Error(ACTIVE_ENGAGEMENT_ERROR(preCheck.workflowState));
   }
 
-  let person = await findPersonByPassport(input.person.passportNo);
-  person = person
-    ? ((await updatePerson(person.id, input.person)) ?? person)
-    : await createPerson(input.person);
+  return db.transaction(async (tx) => {
+    let person = await findPersonByPassport(input.person.passportNo, tx);
 
-  const [engagement] = await db
-    .insert(engagements)
-    .values({
-      personId: person.id,
-      accessPurpose: input.accessPurpose,
-      arrivalDate: input.arrivalDate,
-      departureDate: input.departureDate,
-      receptionData: input.receptionData,
-    })
-    .returning();
+    if (person) {
+      const [activeRow] = await tx
+        .select()
+        .from(engagements)
+        .where(
+          and(
+            eq(engagements.personId, person.id),
+            notInArray(engagements.workflowState, TERMINAL_WORKFLOW_STATES),
+          ),
+        );
+      if (activeRow) {
+        throw new Error(
+          ACTIVE_ENGAGEMENT_ERROR(activeRow.workflowState as WorkflowState),
+        );
+      }
+      person = (await updatePerson(person.id, input.person, tx)) ?? person;
+    } else {
+      person = await createPerson(input.person, tx);
+    }
 
-  const [cycle] = await db
-    .insert(workflowCycles)
-    .values({ engagementId: engagement.id, cycleNumber: 1 })
-    .returning();
+    let engagement: Engagement;
+    try {
+      [engagement] = await tx
+        .insert(engagements)
+        .values({
+          personId: person.id,
+          accessPurpose: input.accessPurpose,
+          arrivalDate: input.arrivalDate,
+          departureDate: input.departureDate,
+          receptionData: input.receptionData,
+        })
+        .returning();
+    } catch (error) {
+      // 23505 = Postgres unique_violation — a concurrent submission for the
+      // same passport won the race between the check above and this insert;
+      // engagements_active_person_id_idx (the partial unique index) is the
+      // real guard, the checks above are just a friendlier fast path.
+      if (isUniqueViolation(error)) {
+        throw new Error(ACTIVE_ENGAGEMENT_ERROR("active"));
+      }
+      throw error;
+    }
 
-  await db.insert(workflowTransitions).values({
-    engagementId: engagement.id,
-    workflowCycleId: cycle.id,
-    fromState: "Draft",
-    toState: "AtReception",
-    performedBy: createdBy,
+    const [cycle] = await tx
+      .insert(workflowCycles)
+      .values({ engagementId: engagement.id, cycleNumber: 1 })
+      .returning();
+
+    await tx.insert(workflowTransitions).values({
+      engagementId: engagement.id,
+      workflowCycleId: cycle.id,
+      fromState: "Draft",
+      toState: "AtReception",
+      performedBy: createdBy,
+    });
+
+    return engagement;
   });
-
-  return engagement;
 }
 
 export async function updateReceptionData(
@@ -338,14 +388,6 @@ export async function applyStakeholderApproval(
     throw new Error("Engagement is not awaiting Reception approval");
   }
 
-  const [existing] = await db
-    .select()
-    .from(stakeholderApprovals)
-    .where(eq(stakeholderApprovals.engagementId, engagementId));
-  if (existing) {
-    throw new Error("Engagement has already been approved");
-  }
-
   const directRole = (["HCM", "GMM", "DMD"] as const).find((role) =>
     session.workflowRoles.includes(role),
   );
@@ -360,58 +402,97 @@ export async function applyStakeholderApproval(
 
   const approverRole: ApproverRole = directRole ?? "Delegated";
   const approverName = session.displayName ?? "";
-
-  await db.insert(stakeholderApprovals).values({
-    engagementId,
-    approverRole,
-    approverStaffUserId: session.staffUserId,
-    approverName,
-    signature: input.signature,
-    isDelegated: isDelegatedApprover,
-    delegatedBy: isDelegatedApprover ? engagement.delegationGrantedBy : null,
-    delegatedAt: isDelegatedApprover ? engagement.delegationGrantedAt : null,
-    delegationReason: isDelegatedApprover ? engagement.delegationReason : null,
-  });
-
-  const cycle = await getActiveWorkflowCycle(engagementId);
-  if (!cycle) {
-    throw new Error("No active workflow cycle for this engagement");
-  }
-
   const { nextState, nextRole } = getNextStateForPath(
     engagement.accessPurpose as AccessPurpose,
   );
+  const recipients = nextRole ? await getStaffByWorkflowRoles([nextRole]) : [];
 
-  const [updated] = await db
-    .update(engagements)
-    .set({
-      workflowState: nextState,
-      delegatedApproverId: null,
-      delegationGrantedBy: null,
-      delegationGrantedAt: null,
-      delegationReason: null,
-    })
-    .where(eq(engagements.id, engagementId))
-    .returning();
+  const updated = await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(stakeholderApprovals)
+      .where(eq(stakeholderApprovals.engagementId, engagementId));
+    if (existing) {
+      throw new Error("Engagement has already been approved");
+    }
 
-  await db.insert(workflowTransitions).values({
-    engagementId,
-    workflowCycleId: cycle.id,
-    fromState: "AtReception",
-    toState: nextState,
-    performedBy,
-    comments: `Approved by ${approverName} (${approverRole})`,
-  });
+    try {
+      await tx.insert(stakeholderApprovals).values({
+        engagementId,
+        approverRole,
+        approverStaffUserId: session.staffUserId,
+        approverName,
+        signature: input.signature,
+        isDelegated: isDelegatedApprover,
+        delegatedBy: isDelegatedApprover
+          ? engagement.delegationGrantedBy
+          : null,
+        delegatedAt: isDelegatedApprover
+          ? engagement.delegationGrantedAt
+          : null,
+        delegationReason: isDelegatedApprover
+          ? engagement.delegationReason
+          : null,
+      });
+    } catch (error) {
+      // 23505 = Postgres unique_violation — a concurrent approval won the
+      // race between the check above and this insert; the unique
+      // constraint on stakeholderApprovals.engagementId is the real guard,
+      // the select above is just a friendlier fast path.
+      if (isUniqueViolation(error)) {
+        throw new Error("Engagement has already been approved");
+      }
+      throw error;
+    }
 
-  let recipients: StaffUser[] = [];
-  if (nextRole) {
-    recipients = await getStaffByWorkflowRoles([nextRole]);
-    await notifyStaff(
-      recipients,
+    const [cycle] = await tx
+      .select()
+      .from(workflowCycles)
+      .where(
+        and(
+          eq(workflowCycles.engagementId, engagementId),
+          isNull(workflowCycles.archivedAt),
+        ),
+      )
+      .orderBy(desc(workflowCycles.cycleNumber))
+      .limit(1);
+    if (!cycle) {
+      throw new Error("No active workflow cycle for this engagement");
+    }
+
+    const [updatedEngagement] = await tx
+      .update(engagements)
+      .set({
+        workflowState: nextState,
+        delegatedApproverId: null,
+        delegationGrantedBy: null,
+        delegationGrantedAt: null,
+        delegationReason: null,
+      })
+      .where(eq(engagements.id, engagementId))
+      .returning();
+
+    await tx.insert(workflowTransitions).values({
       engagementId,
-      `Engagement approved at Reception and routed to ${nextRole}.`,
-    );
-  }
+      workflowCycleId: cycle.id,
+      fromState: "AtReception",
+      toState: nextState,
+      performedBy,
+      comments: `Approved by ${approverName} (${approverRole})`,
+    });
+
+    if (recipients.length > 0 && nextRole) {
+      await tx.insert(notifications).values(
+        recipients.map((recipient) => ({
+          recipientStaffUserId: recipient.id,
+          engagementId,
+          message: `Engagement approved at Reception and routed to ${nextRole}.`,
+        })),
+      );
+    }
+
+    return updatedEngagement;
+  });
 
   return { engagement: updated, recipients, nextRole };
 }
@@ -444,6 +525,14 @@ export async function grantDelegatedApproval(
   grantedBy: string,
   reason: string,
 ): Promise<{ engagement: Engagement; recipient: StaffUser | undefined }> {
+  const existing = await getEngagementById(engagementId);
+  if (!existing) {
+    throw new Error("Engagement not found");
+  }
+  if (existing.workflowState !== "AtReception") {
+    throw new Error("Engagement is not awaiting Reception approval");
+  }
+
   const [engagement] = await db
     .update(engagements)
     .set({

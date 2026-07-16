@@ -99,10 +99,10 @@ including two schema additions beyond `architecture.md`'s original spec:
 `delegationGrantedBy`, `delegationGrantedAt`, `delegationReason`) to hold an
 active-but-not-yet-consumed delegated approval grant, and
 `stakeholder_approvals` gained `isDelegated`/`delegatedBy`/`delegatedAt`/
-`delegationReason` to record a consumed one. `architecture.md` and
-`build-plan.md` should be treated as needing a follow-up sync pass for these
-columns and for the `applyStakeholderApproval`/`applyStakeholderApprovalAction`
-pairing that build-plan.md's original Server Actions list omitted.
+`delegationReason` to record a consumed one. `build-plan.md` already
+documents both of these (Slice 2's schema table and Server Actions list);
+`architecture.md`'s `engagements`/`stakeholder_approvals` schema tables
+still need a follow-up sync pass to add these columns.
 
 **UI refinement pass (2026-07-09):** `Calendar`/`Popover` installed for a
 shadcn-based `DatePicker` (replaces native `<input type="date">`); added
@@ -180,9 +180,12 @@ stakeholders, their role. `ApproverRole` (`lib/domain/types.ts`) gained a
 - [x] `notifications.engagement_id` now a real FK → `engagements.id`
 
 ### Azure Blob
-- [x] `src/lib/azure/blob.ts` — `uploadBlob`, `generateSasUrl` (user-delegation
-      SAS, 15 min expiry, lazily-constructed client so build/typecheck don't
-      require live Azure credentials)
+- [x] `src/lib/azure/blob.ts` — `uploadBlob`, `generateSasUrl` (shared-key auth
+      via `AZURE_STORAGE_CONNECTION_STRING`, SAS built with a
+      `StorageSharedKeyCredential` parsed back out of that same connection
+      string — not user-delegation SAS; see `library-docs.md`, 15 min expiry,
+      lazily-constructed client so build/typecheck don't require live Azure
+      credentials)
 - [x] `src/app/api/documents/route.ts` (upload) +
       `src/app/api/documents/[documentId]/route.ts` (SAS view URL — added
       during the build, not in the original plan table, needed to satisfy
@@ -198,7 +201,7 @@ stakeholders, their role. `ApproverRole` (`lib/domain/types.ts`) gained a
 ### Pages + components
 - [x] `dashboard/(workflow)/reception/` — queue, `new`, `[engagementId]`
 - [x] `reception-form.tsx`, `document-selector.tsx`, `stakeholder-panel.tsx`,
-      `signature-pad.tsx`, `terminate-button.tsx`
+      `signature-pad.tsx`, `cancel-engagement-button.tsx`
 - [x] `system-admin/delegations/` — grant/revoke UI
 - [x] `dashboard/page.tsx` root routing extended: Receptionist/HCM/GMM/DMD →
       `/dashboard/reception`

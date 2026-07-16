@@ -48,11 +48,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
           toast:
             "flex w-fit max-w-[90vw] flex-row items-center gap-3 rounded-[var(--radius)] border border-border bg-card p-4 text-card-foreground",
           icon: "m-0 flex size-6 shrink-0 items-center justify-center",
-          content: "flex flex-col gap-0.5",
+          content: "flex min-w-0 flex-col gap-0.5",
           title:
-            "text-sm font-medium leading-normal whitespace-nowrap text-foreground",
+            "text-sm font-medium leading-normal whitespace-normal break-words text-foreground",
           description:
-            "text-sm leading-normal whitespace-nowrap text-muted-foreground",
+            "text-sm leading-normal whitespace-normal break-words text-muted-foreground",
         },
       }}
       {...props}

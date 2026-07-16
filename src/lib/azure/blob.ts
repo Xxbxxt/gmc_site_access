@@ -55,13 +55,17 @@ export type UploadBlobInput = {
   file: File;
 };
 
+function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\]/g, "_").replace(/\.\.+/g, "_");
+}
+
 export async function uploadBlob(input: UploadBlobInput): Promise<string> {
   const containerClient = getBlobServiceClient().getContainerClient(
     requireEnv("AZURE_STORAGE_CONTAINER_NAME"),
   );
   await containerClient.createIfNotExists();
 
-  const blobPath = `engagements/${input.engagementId}/${input.docType}/${input.file.name}`;
+  const blobPath = `engagements/${input.engagementId}/${input.docType}/${sanitizeFileName(input.file.name)}`;
   const blockBlobClient = containerClient.getBlockBlobClient(blobPath);
 
   const buffer = Buffer.from(await input.file.arrayBuffer());

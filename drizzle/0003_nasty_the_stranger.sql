@@ -91,4 +91,5 @@ ALTER TABLE "workflow_cycles" ADD CONSTRAINT "workflow_cycles_engagement_id_enga
 ALTER TABLE "workflow_transitions" ADD CONSTRAINT "workflow_transitions_engagement_id_engagements_id_fk" FOREIGN KEY ("engagement_id") REFERENCES "public"."engagements"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_transitions" ADD CONSTRAINT "workflow_transitions_workflow_cycle_id_workflow_cycles_id_fk" FOREIGN KEY ("workflow_cycle_id") REFERENCES "public"."workflow_cycles"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_transitions" ADD CONSTRAINT "workflow_transitions_performed_by_staff_users_id_fk" FOREIGN KEY ("performed_by") REFERENCES "public"."staff_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+UPDATE "notifications" SET "engagement_id" = NULL WHERE "engagement_id" IS NOT NULL;--> statement-breakpoint
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_engagement_id_engagements_id_fk" FOREIGN KEY ("engagement_id") REFERENCES "public"."engagements"("id") ON DELETE no action ON UPDATE no action;

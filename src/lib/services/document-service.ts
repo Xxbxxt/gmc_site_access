@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { deleteBlob, generateSasUrl, uploadBlob } from "@/lib/azure/blob";
 import { db } from "@/lib/db/client";
 import { documents, engagements, workflowCycles } from "@/lib/db/schema";
@@ -42,7 +42,14 @@ export async function uploadDocument(
   const [cycle] = await db
     .select()
     .from(workflowCycles)
-    .where(eq(workflowCycles.engagementId, input.engagementId));
+    .where(
+      and(
+        eq(workflowCycles.engagementId, input.engagementId),
+        isNull(workflowCycles.archivedAt),
+      ),
+    )
+    .orderBy(desc(workflowCycles.cycleNumber))
+    .limit(1);
 
   const blobUrl = await uploadBlob({
     engagementId: input.engagementId,
@@ -93,8 +100,8 @@ export async function deleteDocument(documentId: string): Promise<void> {
     throw new Error("Document not found");
   }
 
-  await deleteBlob(document.blobUrl);
   await db.delete(documents).where(eq(documents.id, documentId));
+  await deleteBlob(document.blobUrl);
 }
 
 export async function getMissingRequiredDocTypes(

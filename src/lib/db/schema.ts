@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -6,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -36,24 +38,36 @@ export const persons = pgTable("persons", {
   emergencyContactPhone: text().notNull(),
 });
 
-export const engagements = pgTable("engagements", {
-  id: uuid().defaultRandom().primaryKey(),
-  personId: uuid()
-    .notNull()
-    .references(() => persons.id),
-  accessPurpose: text().notNull(),
-  arrivalDate: date().notNull(),
-  departureDate: date().notNull(),
-  workflowState: text().notNull().default("AtReception"),
-  accessState: text().notNull().default("Pending"),
-  isVisaFlagged: boolean().notNull().default(false),
-  receptionData: jsonb().notNull(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  delegatedApproverId: uuid().references(() => staffUsers.id),
-  delegationGrantedBy: uuid().references(() => staffUsers.id),
-  delegationGrantedAt: timestamp({ withTimezone: true }),
-  delegationReason: text(),
-});
+export const engagements = pgTable(
+  "engagements",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    personId: uuid()
+      .notNull()
+      .references(() => persons.id),
+    accessPurpose: text().notNull(),
+    arrivalDate: date().notNull(),
+    departureDate: date().notNull(),
+    workflowState: text().notNull().default("AtReception"),
+    accessState: text().notNull().default("Pending"),
+    isVisaFlagged: boolean().notNull().default(false),
+    receptionData: jsonb().notNull(),
+    createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+    delegatedApproverId: uuid().references(() => staffUsers.id),
+    delegationGrantedBy: uuid().references(() => staffUsers.id),
+    delegationGrantedAt: timestamp({ withTimezone: true }),
+    delegationReason: text(),
+  },
+  (table) => [
+    // Only one non-terminal (active) engagement per person at a time —
+    // mirrors the app-level guard in `getActiveEngagementForPassport`, but
+    // enforced by Postgres so two concurrent Reception submissions for the
+    // same passport can't both slip past that check and create duplicates.
+    uniqueIndex("engagements_active_person_id_idx")
+      .on(table.personId)
+      .where(sql`${table.workflowState} not in ('Completed', 'Cancelled')`),
+  ],
+);
 
 export const workflowCycles = pgTable("workflow_cycles", {
   id: uuid().defaultRandom().primaryKey(),
@@ -82,6 +96,7 @@ export const stakeholderApprovals = pgTable("stakeholder_approvals", {
   id: uuid().defaultRandom().primaryKey(),
   engagementId: uuid()
     .notNull()
+    .unique()
     .references(() => engagements.id),
   approverRole: text().notNull(),
   approverStaffUserId: uuid()

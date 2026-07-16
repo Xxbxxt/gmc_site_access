@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,7 +54,7 @@ export function SignatureField({
       <TabsContent value="type">
         <Input
           placeholder="Type your full name"
-          defaultValue={value?.mode === "type" ? value.value : ""}
+          value={value?.mode === "type" ? value.value : ""}
           onChange={(e) => onChange({ mode: "type", value: e.target.value })}
         />
       </TabsContent>
@@ -89,9 +90,22 @@ function UploadSignature({
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Choose an image file");
+      return;
+    }
+    const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE_BYTES) {
+      toast.error("Image exceeds the 5MB limit");
+      return;
+    }
     setFileName(file.name);
     const reader = new FileReader();
     reader.onload = () => onChange(reader.result as string);
+    reader.onerror = () => {
+      setFileName(null);
+      toast.error("Failed to read image — try again");
+    };
     reader.readAsDataURL(file);
   }
 

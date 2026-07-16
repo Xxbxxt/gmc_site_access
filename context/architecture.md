@@ -405,6 +405,16 @@ Rules the AI agent must never violate:
 - Engagement is the aggregate root — child records modified only through engagement service methods
 - `workflow_transitions` is append-only — never update or delete audit rows
 - One active `workflow_cycles` row per engagement at a time
+- Every insert into `documents` or `workflow_transitions` must derive
+  `workflowCycleId` from a query scoped to the same `engagementId` being
+  written (never pass an independently-sourced cycle id) — this is what
+  currently keeps the two FKs consistent without a DB-level composite
+  constraint. Revisit adding a real composite unique key on
+  `workflow_cycles(engagement_id, cycle_number)` plus composite FKs on
+  `documents`/`workflow_transitions` once Slice 9 (Hospital Timeout) lands
+  and a second `workflow_cycles` row per engagement becomes possible — a
+  2026-07-16 review flagged this as a data-integrity gap, but confirmed no
+  current code path can trigger it (see Slice 9's build-plan.md entry)
 - Email is async — enqueue via `lib/email/`; never block HTTP on Graph API
 - API routes contain no UI logic — components contain no direct DB logic
 - Secrets never in git
