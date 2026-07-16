@@ -306,6 +306,12 @@ export async function requestTerminationAction(
         };
   } catch (error) {
     console.error("[actions/engagements]", error);
-    return { success: false, error: "Failed to request termination" };
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to request termination",
+    };
   }
 }

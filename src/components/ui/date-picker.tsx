@@ -1,6 +1,6 @@
 "use client";
 
-import { format, parseISO } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,8 @@ export function DatePicker({
   disabled,
   placeholder = "Pick a date",
 }: DatePickerProps) {
-  const selected = value ? parseISO(value) : undefined;
+  const parsed = value ? parseISO(value) : undefined;
+  const selected = parsed && isValid(parsed) ? parsed : undefined;
 
   return (
     <Popover>

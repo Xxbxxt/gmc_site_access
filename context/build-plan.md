@@ -201,7 +201,7 @@ When all three approvers are unavailable:
 
 ### Server Actions
 
-`src/actions/engagements.ts` — `lookupPersonByPassport`, `submitReception`, `updateReceptionData`, `requestStakeholderApproval`, **`applyStakeholderApproval`** (missing from this list originally — the service function was planned but no action/UI ever called it until the Slice 2 build added it), `requestDelegatedApproval`, `requestTermination`
+`src/actions/engagements.ts` — `lookupPersonByPassportAction`, `submitReceptionAction`, `updateReceptionDataAction`, `requestStakeholderApprovalAction`, **`applyStakeholderApprovalAction`** (missing from this list originally — the service function was planned but no action/UI ever called it until the Slice 2 build added it), `requestDelegatedApprovalAction`, `requestTerminationAction`
 
 `src/actions/admin.ts` additions — `grantDelegatedApproval`, `revokeDelegatedApproval`
 
@@ -215,21 +215,22 @@ When all three approvers are unavailable:
 
 ### Done when
 
-- [x] Returning visitor passport lookup pre-fills all Person fields
-- [x] New visitor: Person + Engagement created in one submission
-- [x] All 6 sections validate; required fields block record from advancing
-- [x] Applicable document selector works; non-selected types not required
-- [x] Documents reach Azure Blob; SAS URL renders the file in-browser
-- [x] "Request Approval" notifies all three stakeholders simultaneously via dashboard + email
-- [x] Any one stakeholder approval routes the record correctly (work → Hospital, visit-only → Completed, visit+mine → Training)
-- [x] Delegated approval full loop: request → grant → Receptionist approves → audit row written
-- [x] Termination request creates row + notifies System Admin
-- [x] Guest Receptionists see queue read-only; no form actions rendered
+Built (code + `tsc --noEmit` + `pnpm build` all clean) but none of the
+following have been exercised in a live browser — Azure Blob/Graph
+credentials aren't configured in this environment. Ask the user to verify
+each of these end-to-end in-browser per `CLAUDE.md` (agent does not start a
+dev server); check off only once actually observed working:
 
-Built (code + `tsc --noEmit` + `pnpm build` all clean) but not yet exercised in a
-live browser — Azure Blob/Graph credentials aren't configured in this
-environment. Ask the user to verify the above end-to-end in-browser per
-`CLAUDE.md` (agent does not start a dev server).
+- [ ] Returning visitor passport lookup pre-fills all Person fields
+- [ ] New visitor: Person + Engagement created in one submission
+- [ ] All 6 sections validate; required fields block record from advancing
+- [ ] Applicable document selector works; non-selected types not required
+- [ ] Documents reach Azure Blob; SAS URL renders the file in-browser
+- [ ] "Request Approval" notifies all three stakeholders simultaneously via dashboard + email
+- [ ] Any one stakeholder approval routes the record correctly (work → Hospital, visit-only → Completed, visit+mine → Training)
+- [ ] Delegated approval full loop: request → grant → Receptionist approves → audit row written
+- [ ] Termination request creates row + notifies System Admin
+- [ ] Guest Receptionists see queue read-only; no form actions rendered
 
 ---
 
@@ -487,6 +488,8 @@ to Hospital for a fresh medical checkup.
 ### What to build
 
 - `functions/check-hospital-timeout/index.ts` — Azure Function, timer-triggered daily; queries work-path records at `AtTraining` where `hospital_clearances.clearance_date` is older than 3 months; archives active `workflow_cycles` row (sets `archived_at`); resets `workflow_state = AtHospital`; opens new `workflow_cycles` row; notifies Hospital + Training School + Reception
+
+**Before building:** this is the first slice that ever creates a second `workflow_cycles` row for the same engagement. A 2026-07-16 review flagged that `documents`/`workflow_transitions` each hold `engagement_id` and `workflow_cycle_id` as independent FKs with nothing stopping the pair from disagreeing (a cycle belonging to a different engagement than the row claims) — currently a non-issue only because every insert derives `workflowCycleId` from a query scoped to the same `engagementId`. Once a second cycle can exist, add a composite unique key on `workflow_cycles(engagement_id, cycle_number)` and composite FKs on `documents`/`workflow_transitions` referencing it, rather than continuing to rely on that derivation discipline alone. See `architecture.md`'s Invariants section.
 
 ### Email templates
 

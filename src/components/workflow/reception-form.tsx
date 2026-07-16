@@ -236,18 +236,25 @@ export function ReceptionForm({
       return;
     }
     setIsLookingUp(true);
-    const found = await lookupPersonByPassportAction(passportNo);
-    setIsLookingUp(false);
-    setActiveEngagementId(found?.activeEngagementId ?? null);
-    if (found) {
-      for (const [key, value] of Object.entries(found.person)) {
-        form.setValue(key as FieldPath<ReceptionFormValues>, value, {
-          shouldValidate: false,
-        });
+    try {
+      const found = await lookupPersonByPassportAction(passportNo);
+      setActiveEngagementId(found?.activeEngagementId ?? null);
+      if (found) {
+        for (const [key, value] of Object.entries(found.person)) {
+          form.setValue(key as FieldPath<ReceptionFormValues>, value, {
+            shouldValidate: false,
+          });
+        }
+        toast.success("Existing visitor found — fields pre-filled");
+      } else {
+        toast.warning(
+          "No visitor found for this passport — enter details below",
+        );
       }
-      toast.success("Existing visitor found — fields pre-filled");
-    } else {
-      toast.warning("No visitor found for this passport — enter details below");
+    } catch {
+      toast.error("Lookup failed — try again");
+    } finally {
+      setIsLookingUp(false);
     }
   }
 

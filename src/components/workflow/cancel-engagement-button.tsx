@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
 
@@ -11,6 +12,7 @@ export function CancelEngagementButton({
 }: {
   engagementId: string;
 }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   function handleCancel() {
@@ -23,6 +25,7 @@ export function CancelEngagementButton({
       const result = await cancelEngagementAction(engagementId);
       if (result.success) {
         toast.success("Engagement cancelled");
+        router.refresh();
       } else {
         toast.error(result.error);
       }

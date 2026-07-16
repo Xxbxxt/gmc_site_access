@@ -97,6 +97,7 @@ export const SignaturePad = ({ className, onChange }: SignaturePadProps) => {
       event.preventDefault();
     }
 
+    event.currentTarget.setPointerCapture(event.pointerId);
     isDrawingRef.current = true;
     currentLineRef.current = [Point.fromPointerEvent(event, DPI)];
   };
@@ -141,6 +142,10 @@ export const SignaturePad = ({ className, onChange }: SignaturePadProps) => {
     }
 
     isDrawingRef.current = false;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
 
     const currentLine = currentLineRef.current;
     currentLineRef.current = [];
@@ -233,12 +238,11 @@ export const SignaturePad = ({ className, onChange }: SignaturePadProps) => {
         <div className="absolute bottom-4 left-4 flex gap-2">
           <button
             type="button"
-            title="undo"
+            title="Undo"
             className="focus-visible:ring-ring ring-offset-background text-muted-foreground/60 hover:text-muted-foreground rounded-full p-0 text-xs focus-visible:outline-hidden focus-visible:ring-2"
             onClick={() => onUndoClick()}
           >
             Undo
-            <span className="sr-only">Undo</span>
           </button>
         </div>
       )}

@@ -57,7 +57,11 @@ export async function provisionUserAction(
         };
   } catch (error) {
     console.error("[actions/admin]", error);
-    return { success: false, error: "Failed to provision user" };
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to provision user",
+    };
   }
 }
 
@@ -68,6 +72,10 @@ export async function grantDelegatedApprovalAction(
 ): Promise<ActionResult> {
   try {
     const session = await requireSystemAdmin();
+    if (!reason) {
+      return { success: false, error: "Reason is required" };
+    }
+
     const { recipient } = await grantDelegatedApproval(
       engagementId,
       receptionistStaffUserId,
@@ -94,7 +102,13 @@ export async function grantDelegatedApprovalAction(
         };
   } catch (error) {
     console.error("[actions/admin]", error);
-    return { success: false, error: "Failed to grant delegated approval" };
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to grant delegated approval",
+    };
   }
 }
 
@@ -108,7 +122,13 @@ export async function revokeDelegatedApprovalAction(
     return { success: true };
   } catch (error) {
     console.error("[actions/admin]", error);
-    return { success: false, error: "Failed to revoke delegated approval" };
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to revoke delegated approval",
+    };
   }
 }
 
@@ -137,6 +157,9 @@ export async function resetPinAction(
         };
   } catch (error) {
     console.error("[actions/admin]", error);
-    return { success: false, error: "Failed to reset PIN" };
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to reset PIN",
+    };
   }
 }

@@ -45,11 +45,13 @@ After building any component: update this file immediately. Do not batch updates
 to `ButtonProps` and pass it straight to the underlying `Comp` — React 19's
 "ref as a prop" support means no `forwardRef` wrapper is needed, just a typed
 `ref` field read like any other prop. Needed because shadcn's generated
-`Calendar` component renders its prev/next nav buttons as `<Button ref={...}>`
-internally; without this the Calendar install type-errors against this
-project's customized `Button` (which dropped `forwardRef` for the `loading`
-prop rewrite in Slice 1). Any other component that needs to forward a ref to
-`Button` now works the same way.
+`Calendar` component's day-cell buttons (`CalendarDayButton`) render as
+`<Button ref={ref}>` internally; without this the Calendar install type-errors
+against this project's customized `Button` (which dropped `forwardRef` for the
+`loading` prop rewrite in Slice 1) — the prev/next nav buttons are a separate
+case, just `buttonVariants(...)` class strings merged onto `react-day-picker`'s
+own native nav buttons, no `Button` component involved there. Any other
+component that needs to forward a ref to `Button` now works the same way.
 
 **Calendar/Popover → date-fns + react-day-picker:** Installing `Calendar` pulled
 in `date-fns` and `react-day-picker` as dependencies automatically (shadcn CLI,

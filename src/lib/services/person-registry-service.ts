@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import { db } from "@/lib/db/client";
+import { type DbClient, db as defaultDb } from "@/lib/db/client";
 import { persons } from "@/lib/db/schema";
 
 export type Person = typeof persons.$inferSelect;
@@ -19,6 +19,7 @@ export type PersonInput = {
 
 export async function findPersonByPassport(
   passportNo: string,
+  db: DbClient = defaultDb,
 ): Promise<Person | undefined> {
   const [person] = await db
     .select()
@@ -27,7 +28,10 @@ export async function findPersonByPassport(
   return person;
 }
 
-export async function createPerson(input: PersonInput): Promise<Person> {
+export async function createPerson(
+  input: PersonInput,
+  db: DbClient = defaultDb,
+): Promise<Person> {
   const [person] = await db.insert(persons).values(input).returning();
   return person;
 }
@@ -35,6 +39,7 @@ export async function createPerson(input: PersonInput): Promise<Person> {
 export async function updatePerson(
   personId: string,
   input: PersonInput,
+  db: DbClient = defaultDb,
 ): Promise<Person | undefined> {
   const [person] = await db
     .update(persons)

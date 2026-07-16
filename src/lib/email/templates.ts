@@ -17,6 +17,14 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function baseUrl(): string {
+  const url = process.env.AUTH_URL;
+  if (!url) {
+    throw new Error("AUTH_URL is not configured");
+  }
+  return url;
+}
+
 export function accessRequestedTemplate(opts: {
   requesterName: string;
   requesterEmail: string;
@@ -27,7 +35,7 @@ export function accessRequestedTemplate(opts: {
   const requestedRole = escapeHtml(opts.requestedRole);
   return {
     subject: "GMC Site Access — new access request",
-    html: `<p>${requesterName} (${requesterEmail}) has requested the role "${requestedRole}".</p><p><a href="${process.env.AUTH_URL}/dashboard/system-admin/users">Review and provision this request</a>.</p>`,
+    html: `<p>${requesterName} (${requesterEmail}) has requested the role "${requestedRole}".</p><p><a href="${baseUrl()}/dashboard/system-admin/users">Review and provision this request</a>.</p>`,
   };
 }
 
@@ -41,7 +49,7 @@ export function accessApprovedTemplate(opts: {
   const workflowRoles = opts.workflowRoles.map(escapeHtml).join(", ") || "None";
   return {
     subject: "GMC Site Access — access approved",
-    html: `<p>Hi ${recipientName}, your access has been approved.</p><p>System role: ${systemRole}</p><p>Workflow roles: ${workflowRoles}</p><p><a href="${process.env.AUTH_URL}">Go to your dashboard</a> and set up your PIN to continue.</p>`,
+    html: `<p>Hi ${recipientName}, your access has been approved.</p><p>System role: ${systemRole}</p><p>Workflow roles: ${workflowRoles}</p><p><a href="${baseUrl()}">Go to your dashboard</a> and set up your PIN to continue.</p>`,
   };
 }
 
@@ -56,7 +64,7 @@ export function pinResetTemplate(opts: {
 }
 
 function engagementLink(engagementId: string): string {
-  return `${process.env.AUTH_URL}/dashboard/reception/${engagementId}`;
+  return `${baseUrl()}/dashboard/reception/${engagementId}`;
 }
 
 export function stakeholderApprovalRequestedTemplate(opts: {

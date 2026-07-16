@@ -225,20 +225,25 @@ function UploadSlot({
       formData.set("docType", docType);
       formData.set("file", file);
 
-      const response = await fetch("/api/documents", {
-        method: "POST",
-        body: formData,
-      });
-      const result = await response.json();
+      try {
+        const response = await fetch("/api/documents", {
+          method: "POST",
+          body: formData,
+        });
+        const result = await response.json();
 
-      if (result.success) {
-        toast.success(`${DOCUMENT_LABELS[docType]} uploaded`);
-        router.refresh();
-      } else {
-        toast.error(result.error ?? "Upload failed");
-      }
-      if (inputRef.current) {
-        inputRef.current.value = "";
+        if (result.success) {
+          toast.success(`${DOCUMENT_LABELS[docType]} uploaded`);
+          router.refresh();
+        } else {
+          toast.error(result.error ?? "Upload failed");
+        }
+      } catch {
+        toast.error("Upload failed");
+      } finally {
+        if (inputRef.current) {
+          inputRef.current.value = "";
+        }
       }
     });
   }
