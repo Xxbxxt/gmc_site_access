@@ -410,7 +410,7 @@ for typed) instead of rendering inert controls.
 ### DocumentSelector
 
 File: `src/components/workflow/document-selector.tsx`
-Last updated: 2026-07-09
+Last updated: 2026-07-16
 
 **Pattern notes:**
 `Checkbox` per applicable document type (shadcn, not hand-rolled); each row is
@@ -426,6 +426,17 @@ a documented exception (same precedent as `Table`'s in-file
 `architecture.md`). "View" fetches a fresh SAS URL from
 `GET /api/documents/[documentId]` and opens it in a new tab rather than caching
 the URL, since SAS URLs expire after 15 minutes.
+
+**`mode`/`docTypes` (2026-07-16):** Added `mode: "select" | "required"`
+(default `"select"` — Reception's existing checkbox behavior, unchanged)
+and an optional `docTypes` override (defaults to `RECEPTION_DOCUMENT_TYPES`,
+the original 7 Reception types — kept as a separate constant from the full
+`DOCUMENT_LABELS` key set so `hospital_fitness_form` never leaks into
+Reception's default checkbox list). In `"required"` mode a doc type is
+always treated as applicable — no checkbox, just a plain label, since it's
+mandatory rather than Receptionist-selected. First consumer: Hospital's
+`hospital-form.tsx` passes `mode="required"` `docTypes={["hospital_fitness_form"]}`.
+`value`/`onChange` are now optional props, only meaningful in `"select"` mode.
 
 **Create-mode uploads before the engagement exists (2026-07-09):** `documents.engagementId`
 is a required FK, so a real upload can't happen until the engagement row
@@ -677,6 +688,98 @@ line up with the dashboard shell's own `max-w-5xl` content column
 to render properly anyway. Mounted once in the root `layout.tsx` (alongside
 `Toaster`) so it covers every route, including the pre-dashboard auth
 pages — this is a device-capability gate, not a workflow-layer concern.
+
+### EmptyState
+
+File: `src/components/ui/empty-state.tsx`
+Last updated: 2026-07-20
+
+| Property | Class |
+|---|---|
+| Outer | `flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border py-16 text-center` |
+| Icon badge | `flex size-12 items-center justify-center rounded-full bg-muted` |
+| Icon | `size-6 text-muted-foreground` |
+| Title | `text-sm font-medium text-foreground` |
+| Description | `max-w-sm text-sm text-muted-foreground` |
+| Shadow | none |
+
+**Pattern notes:**
+Generic reusable primitive (no business logic) placed in `components/ui/`,
+same precedent as `DatePicker`/`SubmitButton`. Extracted from five near-identical
+hand-rolled blocks (`flex flex-col items-center justify-center py-16 text-center`
++ a lone `<p>`) across `reception/page.tsx`, `hospital/page.tsx`,
+`system-admin/users/page.tsx`, and `system-admin/delegations/page.tsx` (x2) — all
+now render `<EmptyState icon={...} title="..." description="..." action={...} />`
+instead. Props: `icon` (a `LucideIcon` component reference, not a rendered
+element — `EmptyState` sizes/colors it itself so every empty state matches),
+`title`, optional `description`, optional `action` (e.g. Reception's queue
+passes its "New Registration" `Button` here when `canManage`, so the empty
+state itself can offer the way out rather than requiring the page's `PageHeader`
+button alone). Icon choice is picked per context to read as "modern," not
+generic — `UsersRound` (Reception queue, Staff Users), `Stethoscope` (Hospital
+queue), `UserCheck` (active delegations), `UserCog` (awaiting delegation). The
+dashed border is the one exception to this app's "no visible container border
+on bare list/queue backgrounds" default — it's what signals "this is an empty
+placeholder region," same convention as file-drop zones. Check here before
+hand-rolling another "no rows yet" block anywhere in the app.
+
+### ReceptionSummary
+
+File: `src/components/workflow/reception-summary.tsx`
+Last updated: 2026-07-16
+
+| Property | Class |
+|---|---|
+| Card | `bg-card border border-border rounded-xl p-6` |
+| Title | `text-lg font-semibold text-foreground mb-4` |
+| Field grid | `grid grid-cols-2 gap-4` |
+| Field label | `text-xs font-medium uppercase tracking-wide text-muted-foreground` |
+| Field value | `text-sm text-foreground` |
+| Approval badge | `bg-status-success-bg text-status-success-fg` (approved) / `bg-status-warning-bg text-status-warning-fg` (awaiting) |
+
+**Pattern notes:**
+A deliberately minimal read-only card, not a reuse of the full
+`ReceptionForm`/`StakeholderPanel` pair Reception's own detail page renders.
+Hospital staff need patient identity + emergency contact + approval status
+for a medical clearance decision — not company/GMC-liaison/transport/PPE/
+visa data, none of which `project_overview.md`'s Hospital section calls for.
+Internal (non-exported) `Field` label/value helper mirrors the label/value
+pairing style used elsewhere, just not built on `FormField` since this
+renders plain data, not a form. Dates are rendered as their raw
+`yyyy-MM-dd` strings — no `date-fns` import, per `library-docs.md`'s rule
+that only `components/ui/` (`DatePicker`, `Calendar`) may import it
+directly. Reusable for any future layer (Training, Security, IT) that needs
+the same "who is this person, are they approved" context without pulling in
+Reception's full form.
+
+### HospitalForm
+
+File: `src/components/workflow/hospital-form.tsx`
+Last updated: 2026-07-16
+
+| Property | Class |
+|---|---|
+| Card | `bg-card border border-border rounded-xl p-6` |
+| Title | `text-lg font-semibold text-foreground mb-4` |
+| Field stack | `flex flex-col gap-4`, each field `flex flex-col gap-2` |
+
+**Pattern notes:**
+Plain `useState` + `useTransition`, not `react-hook-form` — only two real
+input fields (clearance status, doctor comments) plus the upload slot;
+RHF was justified for Reception's ~35 fields, not for this. Uses
+`DocumentSelector` in `mode="required"` for the mandatory
+`hospital_fitness_form` upload (see that component's notes above) — the
+Submit Clearance button stays disabled until the file is uploaded AND a
+status is chosen AND comments are non-empty, mirroring
+`submitForStakeholderApproval`'s missing-document guard pattern but
+enforced client-side too for immediate feedback (the server-side guard in
+`recordHospitalClearance` is still the real enforcement). When a prior
+clearance exists for the active workflow cycle, a small `text-xs
+text-muted-foreground` line above the form shows it for context ("Last
+recorded: Unfit — ... (date)") — the form itself always starts blank,
+ready for a fresh submission, since `hospital_clearances` is append-only
+(see `progress-tracker.md`'s Slice 3 entry). `readOnly` disables every
+field and hides the submit button, same precedent as `ReceptionForm`.
 
 ### Entry format
 

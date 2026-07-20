@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import { requirePinConfirmed, requireWriteAccess } from "@/lib/auth/guards";
-import type { ActionResult } from "@/lib/domain/types";
+import type { ActionResult, HospitalClearanceStatus } from "@/lib/domain/types";
 import { sendEmail } from "@/lib/email/send";
 import {
   delegatedApprovalRequestedTemplate,
+  hospitalClearedTemplate,
+  hospitalUnfitTemplate,
   stakeholderApprovalReceivedTemplate,
   stakeholderApprovalRequestedTemplate,
   terminationRequestedTemplate,
@@ -19,6 +21,7 @@ import {
   getActiveEngagementForPassport,
   getEngagementDetail,
   type ReceptionFormInput,
+  recordHospitalClearance,
   requestDelegatedApproval,
   requestTermination,
   submitForStakeholderApproval,
@@ -260,6 +263,60 @@ export async function requestDelegatedApprovalAction(
         error instanceof Error
           ? error.message
           : "Failed to request delegated approval",
+    };
+  }
+}
+
+export async function submitHospitalClearanceAction(
+  engagementId: string,
+  input: {
+    clearanceStatus: HospitalClearanceStatus;
+    doctorComments: string;
+  },
+): Promise<ActionResult> {
+  try {
+    const session = await requireWriteAccess("HospitalStaff");
+    const { recipients, outcome } = await recordHospitalClearance(
+      engagementId,
+      input,
+      session.staffUserId,
+    );
+    const detail = await getEngagementDetail(engagementId);
+
+    let allSent = true;
+    if (detail) {
+      for (const recipient of recipients) {
+        const sent = await sendEmail({
+          to: recipient.email,
+          ...(outcome === "Cleared"
+            ? hospitalClearedTemplate({
+                personName: detail.person.fullName,
+                engagementId,
+              })
+            : hospitalUnfitTemplate({
+                personName: detail.person.fullName,
+                engagementId,
+              })),
+        });
+        if (!sent) allSent = false;
+      }
+    }
+
+    revalidatePath("/dashboard/hospital");
+    revalidatePath(`/dashboard/hospital/${engagementId}`);
+    return allSent
+      ? { success: true }
+      : {
+          success: true,
+          warning:
+            "Clearance recorded, but some notification emails may not have sent",
+        };
+  } catch (error) {
+    console.error("[actions/engagements]", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to record clearance",
     };
   }
 }

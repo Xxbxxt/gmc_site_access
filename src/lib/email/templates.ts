@@ -67,6 +67,10 @@ function engagementLink(engagementId: string): string {
   return `${baseUrl()}/dashboard/reception/${engagementId}`;
 }
 
+function hospitalEngagementLink(engagementId: string): string {
+  return `${baseUrl()}/dashboard/hospital/${engagementId}`;
+}
+
 export function stakeholderApprovalRequestedTemplate(opts: {
   personName: string;
   engagementId: string;
@@ -112,6 +116,28 @@ export function delegatedApprovalGrantedTemplate(opts: {
   return {
     subject: "GMC Site Access — delegated approval granted",
     html: `<p>Hi ${recipientName}, you've been granted a one-off delegated approval privilege for this engagement.</p><p><a href="${engagementLink(opts.engagementId)}">Complete the approval</a>.</p>`,
+  };
+}
+
+export function hospitalClearedTemplate(opts: {
+  personName: string;
+  engagementId: string;
+}): MessageTemplate {
+  const personName = escapeHtml(opts.personName);
+  return {
+    subject: "GMC Site Access — hospital clearance recorded",
+    html: `<p>${personName} has been cleared by Hospital and routed to Training School.</p><p><a href="${hospitalEngagementLink(opts.engagementId)}">View the record</a>.</p>`,
+  };
+}
+
+export function hospitalUnfitTemplate(opts: {
+  personName: string;
+  engagementId: string;
+}): MessageTemplate {
+  const personName = escapeHtml(opts.personName);
+  return {
+    subject: "GMC Site Access — hospital marked record Unfit",
+    html: `<p>${personName} was marked Unfit at Hospital and remains at Hospital pending re-evaluation.</p><p><a href="${hospitalEngagementLink(opts.engagementId)}">View the record</a>.</p>`,
   };
 }
 

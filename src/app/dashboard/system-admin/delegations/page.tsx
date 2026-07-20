@@ -1,6 +1,9 @@
+import { UserCheck, UserCog } from "lucide-react";
+
 import { ActiveDelegationRow } from "@/app/dashboard/system-admin/delegations/active-delegation-row";
 import { GrantDelegationRow } from "@/app/dashboard/system-admin/delegations/grant-delegation-row";
 import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableBody,
@@ -47,11 +50,11 @@ export default async function DelegationsPage() {
         </h2>
         <div className="overflow-x-auto bg-card">
           {activeGrants.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-sm text-muted-foreground">
-                No active delegated approvals.
-              </p>
-            </div>
+            <EmptyState
+              icon={UserCheck}
+              title="No active delegated approvals"
+              description="Grants you make below will show up here while they're in effect."
+            />
           ) : (
             <Table>
               <TableHeader>
@@ -90,11 +93,11 @@ export default async function DelegationsPage() {
         </h2>
         <div className="overflow-x-auto bg-card">
           {candidates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-sm text-muted-foreground">
-                No engagements awaiting approval.
-              </p>
-            </div>
+            <EmptyState
+              icon={UserCog}
+              title="No engagements awaiting approval"
+              description="Engagements at Reception without a delegated approver will appear here."
+            />
           ) : (
             <Table>
               <TableHeader>

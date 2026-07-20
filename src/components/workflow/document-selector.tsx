@@ -18,9 +18,18 @@ const DOCUMENT_LABELS: Record<DocType, string> = {
   ghana_card: "Ghana Card",
   assignment_letter: "Letter of assignment / contract",
   insurance_proof: "Proof of medical/travel insurance",
+  hospital_fitness_form: "Fitness form",
 };
 
-const DOCUMENT_TYPES = Object.keys(DOCUMENT_LABELS) as DocType[];
+const RECEPTION_DOCUMENT_TYPES: DocType[] = [
+  "passport_biodata",
+  "valid_visa",
+  "mincom_letter",
+  "work_residence_permit",
+  "ghana_card",
+  "assignment_letter",
+  "insurance_proof",
+];
 
 function fileNameFromUrl(blobUrl: string): string {
   try {
@@ -33,8 +42,10 @@ function fileNameFromUrl(blobUrl: string): string {
 
 type DocumentSelectorProps = {
   engagementId?: string;
-  value: DocType[];
-  onChange: (value: DocType[]) => void;
+  mode?: "select" | "required";
+  docTypes?: DocType[];
+  value?: DocType[];
+  onChange?: (value: DocType[]) => void;
   uploadedDocuments: Document[];
   pendingFiles?: Partial<Record<DocType, File>>;
   onPendingFilesChange?: (files: Partial<Record<DocType, File>>) => void;
@@ -43,7 +54,9 @@ type DocumentSelectorProps = {
 
 export function DocumentSelector({
   engagementId,
-  value,
+  mode = "select",
+  docTypes = RECEPTION_DOCUMENT_TYPES,
+  value = [],
   onChange,
   uploadedDocuments,
   pendingFiles = {},
@@ -51,7 +64,7 @@ export function DocumentSelector({
   disabled,
 }: DocumentSelectorProps) {
   function toggle(docType: DocType, checked: boolean) {
-    onChange(
+    onChange?.(
       checked ? [...value, docType] : value.filter((t) => t !== docType),
     );
   }
@@ -64,8 +77,8 @@ export function DocumentSelector({
 
   return (
     <div className="flex flex-col gap-3">
-      {DOCUMENT_TYPES.map((docType) => {
-        const isApplicable = value.includes(docType);
+      {docTypes.map((docType) => {
+        const isApplicable = mode === "required" || value.includes(docType);
         const uploaded = uploadedDocuments.find(
           (doc) => doc.docType === docType,
         );
@@ -74,18 +87,26 @@ export function DocumentSelector({
             key={docType}
             className="flex items-center justify-between gap-3"
           >
-            <label
-              htmlFor={`applicable-${docType}`}
-              className="flex items-center gap-2 text-sm text-foreground"
-            >
-              <Checkbox
-                id={`applicable-${docType}`}
-                checked={isApplicable}
-                onCheckedChange={(checked) => toggle(docType, checked === true)}
-                disabled={disabled}
-              />
-              {DOCUMENT_LABELS[docType]}
-            </label>
+            {mode === "required" ? (
+              <span className="text-sm text-foreground">
+                {DOCUMENT_LABELS[docType]}
+              </span>
+            ) : (
+              <label
+                htmlFor={`applicable-${docType}`}
+                className="flex items-center gap-2 text-sm text-foreground"
+              >
+                <Checkbox
+                  id={`applicable-${docType}`}
+                  checked={isApplicable}
+                  onCheckedChange={(checked) =>
+                    toggle(docType, checked === true)
+                  }
+                  disabled={disabled}
+                />
+                {DOCUMENT_LABELS[docType]}
+              </label>
+            )}
             {isApplicable &&
               (engagementId ? (
                 <UploadSlot
