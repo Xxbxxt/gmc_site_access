@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, LogOut } from "lucide-react";
+import { Bell, ChevronsUpDown, LogOut } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTransition } from "react";
@@ -54,7 +54,6 @@ export function DashboardTopbar({
   userName,
   userEmail,
   userImage,
-  userRole,
   unreadCount,
   notifications,
 }: {
@@ -62,7 +61,6 @@ export function DashboardTopbar({
   userName: string;
   userEmail: string;
   userImage: string | null;
-  userRole: string;
   unreadCount: number;
   notifications: NotificationItem[];
 }) {
@@ -172,26 +170,27 @@ export function DashboardTopbar({
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu>
-            <DropdownMenuTrigger className="cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <DropdownMenuTrigger className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
               <Avatar className="h-8 w-8">
                 {userImage && <AvatarImage src={userImage} alt={userName} />}
                 <AvatarFallback className="text-xs">
                   {initials(userName)}
                 </AvatarFallback>
               </Avatar>
+              <span className="text-sm font-medium text-foreground">
+                {userName}
+              </span>
+              <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent
+              align="end"
+              className="w-(--radix-dropdown-menu-trigger-width)"
+            >
               <DropdownMenuLabel className="font-normal">
-                <p className="text-sm font-medium text-foreground">
-                  {userName}
-                </p>
                 <p className="text-xs text-muted-foreground">{userEmail}</p>
-                <span className="mt-1.5 inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {userRole}
-                </span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
+              <DropdownMenuItem variant="destructive" asChild>
                 <Link href="/sign-out">
                   <LogOut />
                   Sign out

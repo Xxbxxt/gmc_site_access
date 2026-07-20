@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   integer,
   jsonb,
@@ -127,6 +128,25 @@ export const workflowTransitions = pgTable("workflow_transitions", {
   performedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   comments: text(),
 });
+
+export const hospitalClearances = pgTable(
+  "hospital_clearances",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    workflowCycleId: uuid()
+      .notNull()
+      .references(() => workflowCycles.id),
+    clearanceStatus: text().notNull(),
+    doctorComments: text().notNull(),
+    clearanceDate: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "hospital_clearances_clearance_status_check",
+      sql`${table.clearanceStatus} in ('Fit', 'FitWithConditions', 'Unfit')`,
+    ),
+  ],
+);
 
 export const terminationRequests = pgTable("termination_requests", {
   id: uuid().defaultRandom().primaryKey(),

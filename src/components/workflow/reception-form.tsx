@@ -42,11 +42,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { CancelEngagementButton } from "@/components/workflow/cancel-engagement-button";
 import { DocumentSelector } from "@/components/workflow/document-selector";
 import { PhoneInput } from "@/components/workflow/phone-input";
 import type { DocType } from "@/lib/domain/types";
 import type { Document } from "@/lib/services/document-service";
-import { toSentenceCase, toTitleCase } from "@/lib/utils";
+import { toUpperCase } from "@/lib/utils";
 
 const ACCESS_LEVEL_OPTIONS = [
   "Visitor Access",
@@ -69,8 +70,7 @@ const VISA_TYPE_OPTIONS = [
 type Casing = "title" | "sentence" | "none";
 
 function applyCasing(value: string, casing: Casing): string {
-  if (casing === "none") return value;
-  return casing === "title" ? toTitleCase(value) : toSentenceCase(value);
+  return casing === "none" ? value : toUpperCase(value);
 }
 
 const phoneFieldSchema = z.string().superRefine((value, ctx) => {
@@ -217,6 +217,10 @@ export function ReceptionForm({
   const [pendingFiles, setPendingFiles] = useState<
     Partial<Record<DocType, File>>
   >({});
+  const [created, setCreated] = useState<{
+    id: string;
+    fullName: string;
+  } | null>(null);
 
   const form = useForm<ReceptionFormValues>({
     resolver: zodResolver(receptionFormSchema),
@@ -247,9 +251,7 @@ export function ReceptionForm({
         }
         toast.success("Existing visitor found — fields pre-filled");
       } else {
-        toast.warning(
-          "No visitor found for this passport — enter details below",
-        );
+        toast.warning("No visitor found for this passport");
       }
     } catch {
       toast.error("Lookup failed — try again");
@@ -329,11 +331,9 @@ export function ReceptionForm({
       }
       if (result.warning) {
         toast.warning(result.warning);
-      } else {
-        toast.success("Engagement created");
       }
       await uploadPendingFiles(result.engagementId);
-      router.push(`/dashboard/reception/${result.engagementId}`);
+      setCreated({ id: result.engagementId, fullName: values.fullName });
     });
   }
 
@@ -366,6 +366,27 @@ export function ReceptionForm({
   }
 
   const disabled = readOnly || isPending;
+
+  if (created) {
+    return (
+      <Card className="flex flex-col items-center gap-4 p-10 text-center">
+        <h2 className="text-lg font-semibold text-foreground">
+          Engagement created for {created.fullName}
+        </h2>
+        <div className="flex items-center gap-3">
+          <Button asChild>
+            <Link href={`/dashboard/reception/${created.id}`}>
+              View Engagement
+            </Link>
+          </Button>
+          <CancelEngagementButton
+            engagementId={created.id}
+            onCancelled={() => router.push("/dashboard/reception")}
+          />
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Form {...form}>
@@ -420,6 +441,7 @@ export function ReceptionForm({
               name="dateOfBirth"
               label="Date of Birth"
               disabled={disabled}
+              captionLayout="dropdown"
             />
             <SelectField
               control={form.control}
@@ -829,10 +851,9 @@ function TextAreaField<TName extends FieldPath<ReceptionFormValues>>({
   control,
   name,
   label,
-  casing = "sentence",
   disabled,
   required = true,
-}: FieldProps<TName> & { casing?: Casing }) {
+}: FieldProps<TName>) {
   return (
     <FormField
       control={control}
@@ -848,9 +869,6 @@ function TextAreaField<TName extends FieldPath<ReceptionFormValues>>({
               {...field}
               value={field.value as string}
               disabled={disabled}
-              onChange={(e) =>
-                field.onChange(applyCasing(e.target.value, casing))
-              }
             />
           </FormControl>
           <FormMessage />
@@ -866,7 +884,8 @@ function DateField<TName extends FieldPath<ReceptionFormValues>>({
   label,
   disabled,
   required = true,
-}: FieldProps<TName>) {
+  captionLayout,
+}: FieldProps<TName> & { captionLayout?: "label" | "dropdown" }) {
   return (
     <FormField
       control={control}
@@ -882,6 +901,7 @@ function DateField<TName extends FieldPath<ReceptionFormValues>>({
               value={field.value as string}
               onChange={field.onChange}
               disabled={disabled}
+              captionLayout={captionLayout}
             />
           </FormControl>
           <FormMessage />

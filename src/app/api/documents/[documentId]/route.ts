@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { requirePinConfirmed, requireWriteAccess } from "@/lib/auth/guards";
 import {
   deleteDocument,
+  getDocTypeOwnerRole,
+  getDocumentById,
   getDocumentViewUrl,
 } from "@/lib/services/document-service";
 
@@ -37,7 +39,7 @@ export async function DELETE(
   { params }: { params: Promise<{ documentId: string }> },
 ) {
   try {
-    await requireWriteAccess("Receptionist");
+    await requirePinConfirmed();
   } catch {
     return NextResponse.json(
       { success: false, error: "Not authorized" },
@@ -47,6 +49,32 @@ export async function DELETE(
 
   try {
     const { documentId } = await params;
+
+    const document = await getDocumentById(documentId);
+    if (!document) {
+      return NextResponse.json(
+        { success: false, error: "Document not found" },
+        { status: 404 },
+      );
+    }
+
+    const ownerRole = getDocTypeOwnerRole(document.docType);
+    if (!ownerRole) {
+      return NextResponse.json(
+        { success: false, error: "Invalid document type" },
+        { status: 400 },
+      );
+    }
+
+    try {
+      await requireWriteAccess(ownerRole);
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "Not authorized" },
+        { status: 403 },
+      );
+    }
+
     await deleteDocument(documentId);
     return NextResponse.json({ success: true });
   } catch (error) {

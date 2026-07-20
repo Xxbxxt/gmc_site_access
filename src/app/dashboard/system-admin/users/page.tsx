@@ -1,8 +1,10 @@
+import { UsersRound } from "lucide-react";
 import Link from "next/link";
 
 import { UserRow } from "@/app/dashboard/system-admin/users/user-row";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableBody,
@@ -43,9 +45,11 @@ export default async function AdminUsersPage() {
       />
       <div className="overflow-x-auto bg-card">
         {sortedUsers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-sm text-muted-foreground">No staff users yet.</p>
-          </div>
+          <EmptyState
+            icon={UsersRound}
+            title="No staff users yet"
+            description="Provisioned GMC staff will appear here."
+          />
         ) : (
           <Table>
             <TableHeader>

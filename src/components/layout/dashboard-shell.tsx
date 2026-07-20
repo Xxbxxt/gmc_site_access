@@ -8,7 +8,6 @@ export function DashboardShell({
   userName,
   userEmail,
   userImage,
-  userRole,
   unreadCount,
   notifications,
   children,
@@ -17,7 +16,6 @@ export function DashboardShell({
   userName: string;
   userEmail: string;
   userImage: string | null;
-  userRole: string;
   unreadCount: number;
   notifications: NotificationItem[];
   children: React.ReactNode;
@@ -29,7 +27,6 @@ export function DashboardShell({
         userName={userName}
         userEmail={userEmail}
         userImage={userImage}
-        userRole={userRole}
         unreadCount={unreadCount}
         notifications={notifications}
       />

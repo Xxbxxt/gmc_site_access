@@ -1,8 +1,17 @@
-import { and, arrayOverlaps, desc, eq, isNull, notInArray } from "drizzle-orm";
+import {
+  and,
+  arrayOverlaps,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  notInArray,
+} from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import {
   engagements,
+  hospitalClearances,
   notifications,
   persons,
   staffUsers,
@@ -14,12 +23,16 @@ import {
 import type {
   AccessPurpose,
   ApproverRole,
+  HospitalClearanceStatus,
   ReceptionData,
   WorkflowRole,
   WorkflowState,
 } from "@/lib/domain/types";
 import type { StaffUser } from "@/lib/services/auth-service";
-import { getMissingRequiredDocTypes } from "@/lib/services/document-service";
+import {
+  getDocumentsForEngagement,
+  getMissingRequiredDocTypes,
+} from "@/lib/services/document-service";
 import {
   createPerson,
   findPersonByPassport,
@@ -30,6 +43,7 @@ import {
 export type Engagement = typeof engagements.$inferSelect;
 export type StakeholderApproval = typeof stakeholderApprovals.$inferSelect;
 export type WorkflowCycle = typeof workflowCycles.$inferSelect;
+export type HospitalClearance = typeof hospitalClearances.$inferSelect;
 
 export type ReceptionFormInput = {
   person: PersonInput;
@@ -127,6 +141,23 @@ export async function listEngagementsWithPerson(): Promise<
     .select({ engagement: engagements, person: persons })
     .from(engagements)
     .innerJoin(persons, eq(engagements.personId, persons.id))
+    .orderBy(engagements.createdAt);
+}
+
+export async function listEngagementsForLayer(
+  workflowState: WorkflowState,
+  accessPurposes?: AccessPurpose[],
+): Promise<{ engagement: Engagement; person: typeof persons.$inferSelect }[]> {
+  const conditions = [eq(engagements.workflowState, workflowState)];
+  if (accessPurposes && accessPurposes.length > 0) {
+    conditions.push(inArray(engagements.accessPurpose, accessPurposes));
+  }
+
+  return db
+    .select({ engagement: engagements, person: persons })
+    .from(engagements)
+    .innerJoin(persons, eq(engagements.personId, persons.id))
+    .where(and(...conditions))
     .orderBy(engagements.createdAt);
 }
 
@@ -595,4 +626,139 @@ export async function requestTermination(
   );
 
   return { recipients: admins };
+}
+
+export async function getLatestHospitalClearance(
+  engagementId: string,
+): Promise<HospitalClearance | undefined> {
+  const cycle = await getActiveWorkflowCycle(engagementId);
+  if (!cycle) {
+    return undefined;
+  }
+
+  const [latest] = await db
+    .select()
+    .from(hospitalClearances)
+    .where(eq(hospitalClearances.workflowCycleId, cycle.id))
+    .orderBy(desc(hospitalClearances.clearanceDate))
+    .limit(1);
+
+  return latest;
+}
+
+export async function recordHospitalClearance(
+  engagementId: string,
+  input: { clearanceStatus: HospitalClearanceStatus; doctorComments: string },
+  performedBy: string,
+): Promise<{
+  engagement: Engagement;
+  recipients: StaffUser[];
+  outcome: "Cleared" | "Unfit";
+}> {
+  const preCheck = await getEngagementById(engagementId);
+  if (!preCheck) {
+    throw new Error("Engagement not found");
+  }
+  if (
+    preCheck.workflowState !== "AtHospital" ||
+    preCheck.accessPurpose !== "Work"
+  ) {
+    throw new Error("Engagement is not awaiting Hospital clearance");
+  }
+
+  const uploaded = await getDocumentsForEngagement(engagementId);
+  const hasFitnessForm = uploaded.some(
+    (doc) => doc.docType === "hospital_fitness_form",
+  );
+  if (!hasFitnessForm) {
+    throw new Error(
+      "Upload the fitness form before recording a clearance decision",
+    );
+  }
+
+  const outcome: "Cleared" | "Unfit" =
+    input.clearanceStatus === "Unfit" ? "Unfit" : "Cleared";
+  const recipients =
+    outcome === "Cleared"
+      ? await getStaffByWorkflowRoles(["TrainingStaff"])
+      : await getStaffByWorkflowRoles(["Receptionist"]);
+
+  const updated = await db.transaction(async (tx) => {
+    // Row lock — the pre-check above is just a friendly fast path; this is
+    // the real guard against a concurrent clearance submission racing this
+    // one (e.g. two Cleared/Unfit decisions in flight at once). Whichever
+    // transaction commits first wins; the second re-reads the now-updated
+    // state below and correctly rejects itself instead of persisting a
+    // contradictory clearance.
+    const [engagement] = await tx
+      .select()
+      .from(engagements)
+      .where(eq(engagements.id, engagementId))
+      .for("update");
+    if (!engagement) {
+      throw new Error("Engagement not found");
+    }
+    if (
+      engagement.workflowState !== "AtHospital" ||
+      engagement.accessPurpose !== "Work"
+    ) {
+      throw new Error("Engagement is not awaiting Hospital clearance");
+    }
+
+    const [cycle] = await tx
+      .select()
+      .from(workflowCycles)
+      .where(
+        and(
+          eq(workflowCycles.engagementId, engagementId),
+          isNull(workflowCycles.archivedAt),
+        ),
+      )
+      .orderBy(desc(workflowCycles.cycleNumber))
+      .limit(1);
+    if (!cycle) {
+      throw new Error("No active workflow cycle for this engagement");
+    }
+
+    await tx.insert(hospitalClearances).values({
+      workflowCycleId: cycle.id,
+      clearanceStatus: input.clearanceStatus,
+      doctorComments: input.doctorComments,
+    });
+
+    let updatedEngagement = engagement;
+    if (outcome === "Cleared") {
+      [updatedEngagement] = await tx
+        .update(engagements)
+        .set({ workflowState: "AtTraining" })
+        .where(eq(engagements.id, engagementId))
+        .returning();
+
+      await tx.insert(workflowTransitions).values({
+        engagementId,
+        workflowCycleId: cycle.id,
+        fromState: "AtHospital",
+        toState: "AtTraining",
+        performedBy,
+        comments: `Hospital clearance: ${input.clearanceStatus}`,
+      });
+    }
+
+    if (recipients.length > 0) {
+      await tx.insert(notifications).values(
+        recipients.map((recipient) => ({
+          recipientStaffUserId: recipient.id,
+          engagementId,
+          message:
+            outcome === "Cleared"
+              ? "Hospital clearance recorded and routed to Training School."
+              : "Hospital marked this record Unfit — it remains at Hospital.",
+        })),
+      );
+    }
+
+    return updatedEngagement;
+  });
+
+  return { engagement: updated, recipients, outcome };
 }

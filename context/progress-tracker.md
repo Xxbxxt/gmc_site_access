@@ -4,6 +4,11 @@ Update this file after each slice is complete. Mark components done as they are 
 in bulk at the end of a slice.
 Any AI agent reading this should immediately know what is done, what is in progress, and what is next.
 
+A slice's heading ✅ means implementation is complete (code written, `tsc`/`pnpm build` clean) —
+it does not by itself mean the slice has been manually verified end-to-end in a browser. Check
+that slice's own Verification section: an unchecked "Manual in-browser walkthrough" item there
+means that step is still outstanding regardless of the heading.
+
 ---
 
 ## Step 0 — Scaffold ✅
@@ -222,9 +227,122 @@ stakeholders, their role. `ApproverRole` (`lib/domain/types.ts`) gained a
 
 ---
 
-## Slice 3 — Hospital 🔲
+## Slice 3 — Hospital ✅
 
-*Not started.*
+**Reception summary, not full form reuse:** The Hospital detail page does NOT
+reuse `ReceptionForm`/`StakeholderPanel` (unlike what a literal reading of
+`context/build-plan.md`'s "Read-only view of Reception data (personal details,
+company, stakeholder approvals)" might suggest). `context/project-overview.md`'s
+Hospital section only needs patient identity + emergency contact + approval
+status for a medical clearance decision — not company/GMC-liaison/transport/
+PPE/visa data. Built a new `ReceptionSummary` component instead with just:
+full name, passport no., DOB, gender, nationality, emergency contact,
+access purpose, arrival/departure dates, and stakeholder approval status.
+See `context/ui-registry.md`'s `ReceptionSummary` notes.
+
+**hospital_clearances is append-only:** every clearance submission (Fit,
+FitWithConditions, or repeated Unfit re-checks) inserts a new row — never
+updated or overwritten, matching `workflow_transitions`' append-only
+invariant. "Current status" is read as the latest row by `clearance_date`
+via `getLatestHospitalClearance` (joins through the active `workflow_cycles`
+row, same FK-derivation discipline as `documents`/`workflow_transitions`).
+No `workflow_transitions` row is written when Unfit leaves the state
+unchanged — the new `hospital_clearances` row is that action's own audit
+record; a transition row is written only when clearance moves the record to
+`AtTraining`.
+
+**Race condition fixed (2026-07-16 review):** `recordHospitalClearance`
+originally read+validated `workflowState` before opening its transaction,
+so two concurrent clearance submissions (e.g. contradictory Cleared/Unfit
+decisions) could both pass the check and both persist. Fixed the same way
+as `applyStakeholderApproval`/`createEngagement`: the engagement row is now
+locked (`SELECT ... FOR UPDATE`) and revalidated *inside* the transaction —
+the loser of the race re-reads the now-updated state and rejects itself.
+This also closes `getLatestHospitalClearance`'s `clearance_date`-only
+ordering gap in practice (flagged separately) — clearance inserts for one
+engagement are now strictly serialized by the same lock, so two rows for
+one cycle can no longer share a timestamp; added no extra tiebreaker column
+since `hospital_clearances.id` is a random UUID and wouldn't provide a
+meaningful one anyway. Also added a DB-level `CHECK` constraint restricting
+`clearance_status` to `Fit`/`FitWithConditions`/`Unfit` (migration
+`0007_classy_shard.sql`) — previously only enforced by the
+`HospitalClearanceStatus` TypeScript type, nothing stopped an invalid value
+at the database layer.
+
+**DocumentSelector gained a `mode`/`docTypes` mode instead of a new
+component:** `mode: "select" | "required"` (default `"select"`) +
+optional `docTypes` override. In `"required"` mode there's no checkbox —
+the doc type renders as a plain label and the upload slot always shows,
+since Hospital's `hospital_fitness_form` is always applicable, not
+Receptionist-selected. Reception's own call site is unchanged (still
+defaults to the original 7-type checkbox list, now named
+`RECEPTION_DOCUMENT_TYPES` internally to keep `hospital_fitness_form` out of
+its default list). See `ui-registry.md`'s `DocumentSelector` notes.
+
+**`listEngagementsForLayer(workflowState, accessPurposes?)`** added to
+`workflow-service.ts` as a reusable queue filter — Training (Slice 4) and
+Security (Slice 5) will call the same helper with their own state/purpose
+filters instead of each writing a one-off query.
+
+**Local dev migration drift found and fixed:** `db:migrate` had never been
+run for Slice 2's `0005` migration (`stakeholder_approvals` unique
+constraint) — applied it together with this slice's new `0006`
+(`hospital_clearances` table) since both are purely additive.
+
+### Schema
+- [x] `hospital_clearances` table (workflow_cycle_id FK, clearance_status,
+      doctor_comments, clearance_date) — migration `0006_chemical_avengers.sql`
+- [x] `DocType` gained `hospital_fitness_form`; `ReceptionData.applicableDocuments`
+      narrowed to `Exclude<DocType, "hospital_fitness_form">[]` so Reception's
+      zod schema (which never offered that option) still type-checks
+
+### Services
+- [x] `workflow-service.ts` — `listEngagementsForLayer`,
+      `recordHospitalClearance`, `getLatestHospitalClearance`
+
+### Components
+- [x] `document-selector.tsx` — `mode`/`docTypes` props added
+- [x] `reception-summary.tsx` — new minimal read-only card
+- [x] `hospital-form.tsx` — new (plain `useState`, not react-hook-form —
+      only 2 real fields, RHF wasn't justified the way it was for Reception's
+      ~35)
+
+### Pages
+- [x] `dashboard/(workflow)/hospital/page.tsx` — queue, no row actions
+- [x] `dashboard/(workflow)/hospital/[engagementId]/page.tsx`
+- [x] `dashboard/page.tsx` root routing extended: HospitalStaff → `/dashboard/hospital`
+- [x] `dashboard-breadcrumbs.tsx` — `hospital` label added
+
+### Server Actions
+- [x] `actions/engagements.ts` — `submitHospitalClearanceAction`
+
+### Email templates
+- [x] `hospitalClearedTemplate`, `hospitalUnfitTemplate` in `templates.ts`
+
+### Bug found + fixed during manual verification (2026-07-16)
+
+`/api/documents` (both POST and DELETE) hardcoded `requireWriteAccess("Receptionist")`
+— built in Slice 2 for Reception only, never revisited when Slice 3 added a
+second layer that uploads documents. Hospital staff got a 403 "Not
+authorized" toast trying to upload the fitness form; even with the right
+role it would then have failed with "Invalid document type" since the
+route's separate `DOC_TYPES` allowlist didn't include `hospital_fitness_form`
+either. Fixed by adding one canonical `DOC_TYPE_OWNERS: Record<DocType,
+WorkflowRole>` map + `getDocTypeOwnerRole()` in `document-service.ts` (the
+actual authority on doc types) — both routes now resolve the required role
+from the doc type being uploaded/deleted instead of a hardcoded role, and
+the allowlist and role-mapping can't drift apart since they're one map.
+DELETE now looks up the document first (new `getDocumentById`) to know its
+`docType` before authorizing, and returns 404 for a missing document
+instead of falling through to a generic 500. **Any future layer that
+introduces a new doc type (Training, IT) only needs an entry in
+`DOC_TYPE_OWNERS` — not a change to either route.**
+
+### Verification
+- [x] `tsc --noEmit` clean
+- [x] `pnpm build` clean (`/dashboard/hospital` + `/dashboard/hospital/[engagementId]` registered)
+- [ ] Manual in-browser walkthrough of the Slice 3 Done-when checklist — ask
+      the user to verify (agent does not start a dev server per `CLAUDE.md`)
 
 ---
 

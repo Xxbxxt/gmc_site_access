@@ -40,7 +40,8 @@ export type DocType =
   | "work_residence_permit"
   | "ghana_card"
   | "assignment_letter"
-  | "insurance_proof";
+  | "insurance_proof"
+  | "hospital_fitness_form";
 
 export type ApproverRole = "HCM" | "GMM" | "DMD" | "Delegated";
 
@@ -53,6 +54,8 @@ export type VisaType =
   | "Other";
 
 export type TerminationStatus = "Pending" | "Approved" | "Rejected";
+
+export type HospitalClearanceStatus = "Fit" | "FitWithConditions" | "Unfit";
 
 export type ReceptionData = {
   employmentStatus: string;
@@ -82,5 +85,5 @@ export type ReceptionData = {
   itineraryAttached: boolean;
   inflightUpdated: boolean;
   remarks: string;
-  applicableDocuments: DocType[];
+  applicableDocuments: Exclude<DocType, "hospital_fitness_form">[];
 };

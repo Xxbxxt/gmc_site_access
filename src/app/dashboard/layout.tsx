@@ -36,7 +36,6 @@ export default async function DashboardLayout({
       userName={session.displayName ?? session.email ?? "Account"}
       userEmail={session.email ?? ""}
       userImage={session.image}
-      userRole={session.systemRole.replace(/([a-z])([A-Z])/g, "$1 $2")}
       unreadCount={unreadCount}
       notifications={recentNotifications}
     >

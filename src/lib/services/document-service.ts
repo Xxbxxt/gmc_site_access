@@ -2,7 +2,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { deleteBlob, generateSasUrl, uploadBlob } from "@/lib/azure/blob";
 import { db } from "@/lib/db/client";
 import { documents, engagements, workflowCycles } from "@/lib/db/schema";
-import type { DocType, ReceptionData } from "@/lib/domain/types";
+import type { DocType, ReceptionData, WorkflowRole } from "@/lib/domain/types";
 
 export type Document = typeof documents.$inferSelect;
 
@@ -13,6 +13,25 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+
+// Single source of truth for which workflow role owns each doc type — the
+// API route uses this to authorize uploads/deletes instead of hardcoding a
+// role, so a new layer's doc type (e.g. Slice 4's induction forms) only
+// needs an entry here, not a change to the route itself.
+const DOC_TYPE_OWNERS: Record<DocType, WorkflowRole> = {
+  passport_biodata: "Receptionist",
+  valid_visa: "Receptionist",
+  mincom_letter: "Receptionist",
+  work_residence_permit: "Receptionist",
+  ghana_card: "Receptionist",
+  assignment_letter: "Receptionist",
+  insurance_proof: "Receptionist",
+  hospital_fitness_form: "HospitalStaff",
+};
+
+export function getDocTypeOwnerRole(docType: string): WorkflowRole | undefined {
+  return (DOC_TYPE_OWNERS as Record<string, WorkflowRole>)[docType];
+}
 
 export type UploadDocumentInput = {
   engagementId: string;
@@ -78,6 +97,16 @@ export async function getDocumentsForEngagement(
     .select()
     .from(documents)
     .where(eq(documents.engagementId, engagementId));
+}
+
+export async function getDocumentById(
+  documentId: string,
+): Promise<Document | undefined> {
+  const [document] = await db
+    .select()
+    .from(documents)
+    .where(eq(documents.id, documentId));
+  return document;
 }
 
 export async function getDocumentViewUrl(documentId: string): Promise<string> {

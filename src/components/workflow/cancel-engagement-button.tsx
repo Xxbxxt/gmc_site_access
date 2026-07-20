@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 
 export function CancelEngagementButton({
   engagementId,
+  onCancelled,
 }: {
   engagementId: string;
+  onCancelled?: () => void;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -25,7 +27,11 @@ export function CancelEngagementButton({
       const result = await cancelEngagementAction(engagementId);
       if (result.success) {
         toast.success("Engagement cancelled");
-        router.refresh();
+        if (onCancelled) {
+          onCancelled();
+        } else {
+          router.refresh();
+        }
       } else {
         toast.error(result.error);
       }

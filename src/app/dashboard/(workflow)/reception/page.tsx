@@ -1,9 +1,11 @@
+import { UsersRound } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ReceptionRow } from "@/app/dashboard/(workflow)/reception/reception-row";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableBody,
@@ -30,12 +32,13 @@ export default async function ReceptionQueuePage() {
     session.workflowRoles.includes("Receptionist");
 
   const rows = await listEngagementsWithPerson();
+  const firstName = session.displayName?.split(" ")[0] ?? "there";
 
   return (
     <div>
       <PageHeader
-        title="Reception"
-        subtitle="Visitor and expatriate registration queue."
+        title={`Welcome back, ${firstName}!`}
+        subtitle="Here, you'll find existing engagements and create new ones."
         actions={
           canManage ? (
             <Button asChild>
@@ -46,9 +49,18 @@ export default async function ReceptionQueuePage() {
       />
       <div className="overflow-x-auto bg-card">
         {rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-sm text-muted-foreground">No engagements yet.</p>
-          </div>
+          <EmptyState
+            icon={UsersRound}
+            title="No engagements yet"
+            description="Registered visitors and expatriates will show up here."
+            action={
+              canManage ? (
+                <Button asChild>
+                  <Link href="/dashboard/reception/new">New Registration</Link>
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <Table>
             <TableHeader>

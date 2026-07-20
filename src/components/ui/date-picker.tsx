@@ -17,6 +17,7 @@ type DatePickerProps = {
   onChange: (value: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  captionLayout?: "label" | "dropdown";
 };
 
 export function DatePicker({
@@ -24,6 +25,7 @@ export function DatePicker({
   onChange,
   disabled,
   placeholder = "Pick a date",
+  captionLayout = "label",
 }: DatePickerProps) {
   const parsed = value ? parseISO(value) : undefined;
   const selected = parsed && isValid(parsed) ? parsed : undefined;
@@ -47,7 +49,9 @@ export function DatePicker({
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="single"
+          captionLayout={captionLayout}
           selected={selected}
+          defaultMonth={selected}
           onSelect={(date) => onChange(date ? format(date, "yyyy-MM-dd") : "")}
         />
       </PopoverContent>
