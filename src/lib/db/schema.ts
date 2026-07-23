@@ -33,7 +33,7 @@ export const persons = pgTable("persons", {
   dateOfBirth: date().notNull(),
   gender: text().notNull(),
   nationality: text().notNull(),
-  email: text().notNull(),
+  email: text(),
   phone: text().notNull(),
   emergencyContactName: text().notNull(),
   emergencyContactPhone: text().notNull(),

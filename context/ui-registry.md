@@ -40,6 +40,7 @@ After building any component: update this file immediately. Do not batch updates
 | Tabs | `src/components/ui/tabs.tsx` | 2026-07-09 |
 | Calendar | `src/components/ui/calendar.tsx` | 2026-07-09 |
 | Popover | `src/components/ui/popover.tsx` | 2026-07-09 |
+| Command | `src/components/ui/command.tsx` | 2026-07-23 |
 
 **Button `ref` prop (2026-07-09):** Added `ref?: React.Ref<HTMLButtonElement>`
 to `ButtonProps` and pass it straight to the underlying `Comp` — React 19's
@@ -358,13 +359,23 @@ Last updated: 2026-07-09
 First use of `react-hook-form` + `@hookform/resolvers/zod` in this codebase —
 both were already approved/installed dependencies but unused until this form's
 ~35 fields made per-field `useState` unwieldy. Internal (non-exported) field
-helpers — `TextField`, `TextAreaField`, `SelectField`, `YesNoField`,
-`CheckboxField` — wrap `FormField`/`FormItem`/`FormLabel`/`FormControl`/
+helpers — `TextField`, `TextAreaField`, `SelectField`, `ComboboxField`,
+`YesNoField`, `CheckboxField` — wrap `FormField`/`FormItem`/`FormLabel`/`FormControl`/
 `FormMessage` around one shadcn primitive each, keyed by `FieldPath<ReceptionFormValues>`.
-Field-type → component mapping: dropdowns → `Select`, binary yes/no → plain
+Field-type → component mapping: small fixed dropdowns → `Select`, searchable
+long-list dropdowns → `Combobox` (`nationality`, added 2026-07-23 — see
+`Combobox`'s own entry above), binary yes/no → plain
 `RadioGroup` (default styling, **not** the Badge-wrapped variant — that one's
 reserved for the auth role-selector), checkboxes → `Checkbox`, multi-line text →
-`Textarea`. `applicableDocuments` is wired via a raw `Controller` (not one of the
+`Textarea`. `transportTo`/`transportFrom`/`otherInductions` (2026-07-23)
+switched from free-text `TextField` to `YesNoField` — they sit in the "Site
+Support Requirements" checklist alongside `airportPickup`/`generalSiteInduction`/
+etc., which are all "is X required?" Yes/No questions; the three were
+originally built as free-text by mistake, inconsistent with the rest of the
+section (see `docs/ISSUES.md`). `ReceptionData` (`lib/domain/types.ts`) and the
+zod schema both changed these three fields from `string` to `boolean` — no DB
+migration needed since `engagements.receptionData` is a single `jsonb` column,
+not individual typed columns. `applicableDocuments` is wired via a raw `Controller` (not one of the
 field helpers) so it can hand `value`/`onChange` straight to `DocumentSelector`,
 keeping that component RHF-agnostic and reusable outside this form. `readOnly`
 disables every field and hides the submit button rather than swapping to a
@@ -470,6 +481,20 @@ preview — revoked on unmount/replacement via `useEffect` to avoid leaking
 object URLs) + Eye/Trash icons, where Trash just clears that `docType` out of
 `pendingFiles` (no network call, nothing's been uploaded yet).
 
+**View always enabled, Delete hidden (not just disabled) when read-only
+(2026-07-23):** Both `UploadSlot` and `PendingUploadSlot` previously applied
+the same `disabled` prop to both the Eye (view) and Trash (delete) buttons —
+so a stakeholder (HCM/GMM/DMD) viewing a Receptionist's uploaded documents
+via the always-`readOnly` `ReceptionForm` (see `reception-form.tsx`'s
+`formReadOnly` — true for anyone who isn't the active Receptionist) couldn't
+even view a document, and saw a merely-grayed-out (still visible) delete
+icon. Fixed: the Eye button no longer takes `disabled` at all — viewing has
+no side effects and should always work regardless of the form's read-only
+state; the Trash button is now wrapped in `{!disabled && ...}` so it's absent
+entirely (not just inert) whenever the form is read-only, for any viewer —
+matches the read-only semantic better than a disabled-but-visible icon, and
+naturally covers the stakeholder case without a role-specific branch.
+
 **Why `router.refresh()` matters here:** both upload and delete are plain
 `fetch` calls from a Client Component, not Server Actions — so unlike the rest
 of this app's mutations, nothing automatically revalidates the Server
@@ -497,6 +522,41 @@ literally in source to generate it; same reason the Reception queue page keeps
 a `Record<WorkflowState, string>` of full class strings instead of building
 `` `bg-status-${bucket}-bg` `` at runtime.
 
+**Dropped `result.warning` toast (2026-07-23):** `handleRequestApproval`,
+`handleRequestDelegated`, and `handleApprove` only checked `result.success`
+and never read `result.warning` — so when `sendEmail` (`lib/email/send.ts`)
+fails (Graph API error, caught and logged server-side, not thrown) the
+server action still returns `{ success: true, warning: "...emails may not
+have sent" }`, but the panel showed a plain success toast with no indication
+email delivery failed. Fixed to check `result.warning` first and show
+`toast.warning(...)` instead of the success toast, same pattern already used
+in `reception-form.tsx`'s `onSubmit`, `hospital-form.tsx`, and
+`user-row.tsx`/`grant-delegation-row.tsx`. This was the actual cause behind
+a reported "only dashboard notifications arrive, never email" bug — dashboard
+notifications and email attempts are gated by the identical `recipients`/
+`nextRole` condition in `workflow-service.ts`, so they aren't really
+independent; the email side was silently failing and the UI just wasn't
+telling anyone. The underlying email-delivery failure itself is an
+Azure/Graph API config issue (`lib/azure/graph-mail.ts` — check
+`AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET`/`GRAPH_SENDER_EMAIL`
+and the App Registration's `Mail.Send` Application permission, admin-consented),
+not something fixable from this file — the `console.error("[email]", error)`
+in `send.ts` prints the real Graph error server-side; check there once this
+warning toast starts appearing.
+
+**Auto-redirect back to the queue after Request/Confirm Approval (2026-07-23):**
+Both `handleRequestApproval` (Receptionist's plain "Request Approval", not the
+delegated variant) and `handleApprove` ("Confirm Approval" in the Approve
+dialog) previously just toasted success and left the viewer on the same
+engagement detail page. Now both `setTimeout(() => router.push("/dashboard/reception"), 2000)`
+on success, so the viewer lands back on the queue list ("where the records
+were") a couple seconds after the toast — long enough to read the success
+message first. Plain `setTimeout` + `useRouter` rather than
+`SessionRefresher`'s `useEffect`-on-mount shape, since this fires from a user
+action's success branch, not automatically on page load. Scoped to exactly
+the two actions named in `docs/ISSUES.md` — "Request Delegated Approval"
+still doesn't auto-redirect; extend it the same way if that's asked for too.
+
 **Approve dialog is signature-only (2026-07-14):** previously asked every
 approver — direct stakeholder and delegated alike — to also type an "Approval
 Name" and (delegated only) pick "Approving as HCM/GMM/DMD". Both were fake
@@ -510,6 +570,40 @@ own direct role, falling back to the literal `"Delegated"` (added to the
 anymore. The dialog itself is just `SignatureField` + Confirm/Cancel for both
 approver types; check here before adding an identity field back into any
 approval-style modal in this app.
+
+### Combobox
+
+File: `src/components/ui/combobox.tsx`
+Last updated: 2026-07-23
+
+**Pattern notes:**
+Searchable-dropdown primitive, generated on top of shadcn's `Command`
+(`cmdk` — newly added dependency, asked and approved before installing;
+`pnpm dlx shadcn@latest add command` pulled it in) inside the existing
+`Popover`, following the exact same trigger-`Button`-in-a-`Popover` shape as
+`DatePicker`: `PopoverTrigger asChild` wraps a `variant="outline"` `Button`
+(`h-11 w-full justify-between font-normal`, muted placeholder text when
+empty, `ChevronsUpDownIcon` trailing icon), `PopoverContent` holds
+`Command`/`CommandInput`/`CommandList`/`CommandEmpty`/`CommandGroup`/
+`CommandItem`. Since Radix's unified `popover` export in this project
+doesn't expose a `--radix-popover-trigger-width` CSS var (checked — only
+`Select`'s primitive does), the content width is set directly from the
+trigger `Button`'s measured `offsetWidth` via a ref, read at render time —
+works because `PopoverContent` only mounts once `open` is true, by which
+point the trigger has already mounted and the ref is populated; doesn't
+track window resizes, but the trigger sits in a static form grid cell so
+that's not a real case here. Props: `value`/`onChange` (plain strings, no
+object items — matches every other field in this app's forms), `options:
+string[]`, `placeholder`, `searchPlaceholder`, `emptyText`, `disabled`.
+Selecting the already-selected option clears it back to `""` (can't
+otherwise un-select from a single-select list), matching shadcn's own
+Combobox recipe. First consumer: `reception-form.tsx`'s `nationality`
+field (`ComboboxField` helper, mirroring `SelectField`'s shape), backed by
+`NATIONALITIES` in `src/lib/domain/nationalities.ts` (demonyms, e.g.
+"Ghanaian"/"Nigerian"/"British" — not country names, since the field is a
+person's nationality, not a country picker like `PhoneInput`'s dial-code
+list). Reuse this component for any other free-search-over-a-fixed-list
+field before hand-rolling another `Popover`-based dropdown.
 
 ### DatePicker
 
@@ -598,7 +692,21 @@ gated on the same `canRequestApproval` condition as the approval actions
 ### ReceptionRow (row actions + Request Termination)
 
 File: `src/app/dashboard/(workflow)/reception/reception-row.tsx`
-Last updated: 2026-07-09
+Last updated: 2026-07-23
+
+**Whole-row navigation (2026-07-23):** Previously only the Name cell was a
+`Link` to the engagement detail page — every other cell (passport no., access
+purpose, status badge) was inert. Changed to a `cursor-pointer` `TableRow`
+with an `onClick` (`useRouter().push`) instead of the per-cell `Link`, so the
+entire row navigates on click, matching the "stakeholder dashboard" request
+(this queue table is shared by Receptionist/HCM/GMM/DMD — see
+`docs/ISSUES.md`). The `canManage` Actions `TableCell` stops propagation
+(`onClick={(e) => e.stopPropagation()}`) so opening its row-actions dropdown
+doesn't also trigger row navigation — React's synthetic event system bubbles
+through the JSX tree (not raw DOM nesting), so this still catches clicks on
+the `DropdownMenuContent`'s portaled items. First "whole row clickable"
+pattern in this app — `hospital/page.tsx`'s queue table still only links its
+Name cell; apply this same treatment there if that page gets the same ask.
 
 **Pattern notes:**
 "Request Termination" moved here (2026-07-09) from the engagement detail page

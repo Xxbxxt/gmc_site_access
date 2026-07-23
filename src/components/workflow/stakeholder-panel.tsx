@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -41,11 +42,21 @@ export function StakeholderPanel({
   approveAs,
   canRequestApproval,
 }: StakeholderPanelProps) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [delegateOpen, setDelegateOpen] = useState(false);
   const [delegateReason, setDelegateReason] = useState("");
   const [approveOpen, setApproveOpen] = useState(false);
   const [signature, setSignature] = useState<SignatureValue | null>(null);
+  const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const approval = approvals[0];
 
@@ -74,7 +85,15 @@ export function StakeholderPanel({
     startTransition(async () => {
       const result = await requestStakeholderApprovalAction(engagementId);
       if (result.success) {
-        toast.success("Stakeholder approval requested");
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success("Stakeholder approval requested");
+        }
+        redirectTimeoutRef.current = setTimeout(
+          () => router.push("/dashboard/reception"),
+          2000,
+        );
       } else {
         toast.error(result.error);
       }
@@ -88,7 +107,11 @@ export function StakeholderPanel({
         delegateReason,
       );
       if (result.success) {
-        toast.success("Delegated approval requested");
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success("Delegated approval requested");
+        }
         setDelegateOpen(false);
       } else {
         toast.error(result.error);
@@ -108,8 +131,16 @@ export function StakeholderPanel({
         signature: JSON.stringify(signature),
       });
       if (result.success) {
-        toast.success("Engagement approved");
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success("Engagement approved");
+        }
         setApproveOpen(false);
+        redirectTimeoutRef.current = setTimeout(
+          () => router.push("/dashboard/reception"),
+          2000,
+        );
       } else {
         toast.error(result.error);
       }

@@ -57,6 +57,13 @@
       "when": 1784218259465,
       "tag": "0007_classy_shard",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784646036485,
+      "tag": "0008_true_dragon_man",
+      "breakpoints": true
     }
   ]
 }

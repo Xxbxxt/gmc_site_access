@@ -176,23 +176,23 @@ function PendingUploadSlot({
           variant="ghost"
           size="icon"
           className="size-8"
-          disabled={disabled}
           onClick={() => previewUrl && window.open(previewUrl, "_blank")}
         >
           <EyeIcon />
           <span className="sr-only">View</span>
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          disabled={disabled}
-          onClick={onRemove}
-        >
-          <Trash2Icon />
-          <span className="sr-only">Remove</span>
-        </Button>
+        {!disabled && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={onRemove}
+          >
+            <Trash2Icon />
+            <span className="sr-only">Remove</span>
+          </Button>
+        )}
       </div>
     );
   }
@@ -322,24 +322,24 @@ function UploadSlot({
           variant="ghost"
           size="icon"
           className="size-8"
-          disabled={disabled}
           onClick={handleView}
         >
           <EyeIcon />
           <span className="sr-only">View</span>
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          loading={isDeleting}
-          disabled={disabled}
-          onClick={handleDelete}
-        >
-          <Trash2Icon />
-          <span className="sr-only">Remove</span>
-        </Button>
+        {!disabled && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            loading={isDeleting}
+            onClick={handleDelete}
+          >
+            <Trash2Icon />
+            <span className="sr-only">Remove</span>
+          </Button>
+        )}
       </div>
     );
   }

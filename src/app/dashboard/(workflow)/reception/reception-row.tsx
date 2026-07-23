@@ -2,6 +2,7 @@
 
 import { MoreHorizontalIcon } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -55,6 +56,7 @@ export function ReceptionRow({
   workflowState,
   canManage,
 }: ReceptionRowProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -81,7 +83,10 @@ export function ReceptionRow({
 
   return (
     <>
-      <TableRow>
+      <TableRow
+        className="cursor-pointer"
+        onClick={() => router.push(`/dashboard/reception/${engagementId}`)}
+      >
         <TableCell>
           <Link href={`/dashboard/reception/${engagementId}`}>
             {personName}
@@ -97,19 +102,23 @@ export function ReceptionRow({
         {canManage && (
           <TableCell className="text-right">
             {eligibleForTermination && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-8">
-                    <MoreHorizontalIcon />
-                    <span className="sr-only">Open menu</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => setOpen(true)}>
-                    Request Termination
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              // biome-ignore lint/a11y/noStaticElementInteractions: firewall only — stops the click bubbling to the row's navigation onClick, the DropdownMenuTrigger/Item inside are the real interactive elements
+              // biome-ignore lint/a11y/useKeyWithClickEvents: same — this span has no keyboard-relevant behavior of its own
+              <span onClick={(e) => e.stopPropagation()}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-8">
+                      <MoreHorizontalIcon />
+                      <span className="sr-only">Open menu</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => setOpen(true)}>
+                      Request Termination
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </span>
             )}
           </TableCell>
         )}
