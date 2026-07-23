@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
+import type * as React from "react";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,10 @@ type ComboboxProps = {
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
+  id?: string;
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
+  ref?: React.Ref<HTMLButtonElement>;
 };
 
 export function Combobox({
@@ -37,6 +42,10 @@ export function Combobox({
   placeholder = "Select…",
   searchPlaceholder = "Search…",
   emptyText = "No results found.",
+  id,
+  "aria-describedby": ariaDescribedby,
+  "aria-invalid": ariaInvalid,
+  ref,
 }: ComboboxProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -45,7 +54,14 @@ export function Combobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          ref={triggerRef}
+          ref={(node) => {
+            triggerRef.current = node;
+            if (typeof ref === "function") ref(node);
+            else if (ref) ref.current = node;
+          }}
+          id={id}
+          aria-describedby={ariaDescribedby}
+          aria-invalid={ariaInvalid}
           type="button"
           variant="outline"
           role="combobox"

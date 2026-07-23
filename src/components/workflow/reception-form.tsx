@@ -280,7 +280,7 @@ export function ReceptionForm({
           dateOfBirth: values.dateOfBirth,
           gender: values.gender,
           nationality: values.nationality,
-          email: values.email || undefined,
+          email: values.email || null,
           phone: values.phone,
           emergencyContactName: values.emergencyContactName,
           emergencyContactPhone: values.emergencyContactPhone,

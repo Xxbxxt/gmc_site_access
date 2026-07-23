@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -48,6 +48,15 @@ export function StakeholderPanel({
   const [delegateReason, setDelegateReason] = useState("");
   const [approveOpen, setApproveOpen] = useState(false);
   const [signature, setSignature] = useState<SignatureValue | null>(null);
+  const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const approval = approvals[0];
 
@@ -81,7 +90,10 @@ export function StakeholderPanel({
         } else {
           toast.success("Stakeholder approval requested");
         }
-        setTimeout(() => router.push("/dashboard/reception"), 2000);
+        redirectTimeoutRef.current = setTimeout(
+          () => router.push("/dashboard/reception"),
+          2000,
+        );
       } else {
         toast.error(result.error);
       }
@@ -125,7 +137,10 @@ export function StakeholderPanel({
           toast.success("Engagement approved");
         }
         setApproveOpen(false);
-        setTimeout(() => router.push("/dashboard/reception"), 2000);
+        redirectTimeoutRef.current = setTimeout(
+          () => router.push("/dashboard/reception"),
+          2000,
+        );
       } else {
         toast.error(result.error);
       }
