@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { isValidPhoneNumber } from "libphonenumber-js";
 import { Loader2, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -23,6 +24,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Combobox } from "@/components/ui/combobox";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
   Form,
@@ -45,6 +47,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CancelEngagementButton } from "@/components/workflow/cancel-engagement-button";
 import { DocumentSelector } from "@/components/workflow/document-selector";
 import { PhoneInput } from "@/components/workflow/phone-input";
+import { NATIONALITIES } from "@/lib/domain/nationalities";
 import type { DocType } from "@/lib/domain/types";
 import type { Document } from "@/lib/services/document-service";
 import { toUpperCase } from "@/lib/utils";
@@ -85,6 +88,13 @@ const phoneFieldSchema = z.string().superRefine((value, ctx) => {
   }
   if (!number) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Required" });
+    return;
+  }
+  if (!isValidPhoneNumber(`${code} ${number}`)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Enter a valid phone number for the selected country",
+    });
   }
 });
 
@@ -94,7 +104,7 @@ const receptionFormSchema = z.object({
   dateOfBirth: z.string().min(1, "Required"),
   gender: z.string().min(1, "Required"),
   nationality: z.string().min(1, "Required"),
-  email: z.string().email("Enter a valid email"),
+  email: z.union([z.literal(""), z.email("Enter a valid email")]),
   phone: phoneFieldSchema,
   telephoneOnSite: phoneFieldSchema,
   emergencyContactName: z.string().min(1, "Required"),
@@ -105,20 +115,20 @@ const receptionFormSchema = z.object({
   departureDate: z.string().min(1, "Required"),
   companyName: z.string().min(1, "Required"),
   contactNameMonthly: z.string().min(1, "Required"),
-  contactEmail: z.string().email("Enter a valid email"),
+  contactEmail: z.union([z.literal(""), z.email("Enter a valid email")]),
   companyEmergencyName: z.string().min(1, "Required"),
   companyEmergencyTel: phoneFieldSchema,
   gmcLiaisonPerson: z.string().min(1, "Required"),
   gmcLiaisonDept: z.string().min(1, "Required"),
   reasonForRequest: z.string().min(1, "Required"),
   airportPickup: z.boolean(),
-  transportTo: z.string().min(1, "Required"),
-  transportFrom: z.string().min(1, "Required"),
+  transportTo: z.boolean(),
+  transportFrom: z.boolean(),
   accommodationRequired: z.boolean(),
   permanentAccessBadge: z.boolean(),
   ghanaVisaRequired: z.boolean(),
   generalSiteInduction: z.boolean(),
-  otherInductions: z.string().min(1, "Required"),
+  otherInductions: z.boolean(),
   bringingEquipment: z.boolean(),
   ppeRequired: z.boolean(),
   itAccessRequired: z.boolean(),
@@ -182,13 +192,13 @@ const DEFAULT_VALUES: ReceptionFormValues = {
   gmcLiaisonDept: "",
   reasonForRequest: "",
   airportPickup: false,
-  transportTo: "",
-  transportFrom: "",
+  transportTo: false,
+  transportFrom: false,
   accommodationRequired: false,
   permanentAccessBadge: false,
   ghanaVisaRequired: false,
   generalSiteInduction: false,
-  otherInductions: "",
+  otherInductions: false,
   bringingEquipment: false,
   ppeRequired: false,
   itAccessRequired: false,
@@ -270,7 +280,7 @@ export function ReceptionForm({
           dateOfBirth: values.dateOfBirth,
           gender: values.gender,
           nationality: values.nationality,
-          email: values.email,
+          email: values.email || undefined,
           phone: values.phone,
           emergencyContactName: values.emergencyContactName,
           emergencyContactPhone: values.emergencyContactPhone,
@@ -283,7 +293,7 @@ export function ReceptionForm({
           telephoneOnSite: rest.telephoneOnSite,
           companyName: rest.companyName,
           contactNameMonthly: rest.contactNameMonthly,
-          contactEmail: rest.contactEmail,
+          contactEmail: rest.contactEmail || undefined,
           companyEmergencyName: rest.companyEmergencyName,
           companyEmergencyTel: rest.companyEmergencyTel,
           gmcLiaisonPerson: rest.gmcLiaisonPerson,
@@ -450,10 +460,13 @@ export function ReceptionForm({
               options={["Male", "Female", "Other"]}
               disabled={disabled}
             />
-            <TextField
+            <ComboboxField
               control={form.control}
               name="nationality"
               label="Nationality"
+              options={NATIONALITIES}
+              placeholder="Select nationality"
+              searchPlaceholder="Search nationality..."
               disabled={disabled}
             />
             <TextField
@@ -463,6 +476,7 @@ export function ReceptionForm({
               type="email"
               casing="none"
               disabled={disabled}
+              required={false}
             />
             <PhoneField
               control={form.control}
@@ -532,11 +546,12 @@ export function ReceptionForm({
               type="email"
               casing="none"
               disabled={disabled}
+              required={false}
             />
             <TextField
               control={form.control}
               name="companyEmergencyName"
-              label="Emergency Contact (Company)"
+              label="Emergency Contact Name (Company)"
               casing="title"
               disabled={disabled}
             />
@@ -643,26 +658,24 @@ export function ReceptionForm({
               label="IT Access Required"
               disabled={disabled}
             />
-            <TextField
+            <YesNoField
               control={form.control}
               name="transportTo"
               label="Transport Required To"
               disabled={disabled}
             />
-            <TextField
+            <YesNoField
               control={form.control}
               name="transportFrom"
               label="Transport Required From"
               disabled={disabled}
             />
-            <div className="col-span-2">
-              <TextField
-                control={form.control}
-                name="otherInductions"
-                label="Other Inductions / Training"
-                disabled={disabled}
-              />
-            </div>
+            <YesNoField
+              control={form.control}
+              name="otherInductions"
+              label="Other Inductions / Training"
+              disabled={disabled}
+            />
             <SelectField
               control={form.control}
               name="visaType"
@@ -979,6 +992,43 @@ function SelectField<TName extends FieldPath<ReceptionFormValues>>({
               ))}
             </SelectContent>
           </Select>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+}
+
+function ComboboxField<TName extends FieldPath<ReceptionFormValues>>({
+  control,
+  name,
+  label,
+  options,
+  placeholder,
+  searchPlaceholder,
+  disabled,
+}: FieldProps<TName> & {
+  options: string[];
+  placeholder?: string;
+  searchPlaceholder?: string;
+}) {
+  return (
+    <FormField
+      control={control}
+      name={name}
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>{label} *</FormLabel>
+          <FormControl>
+            <Combobox
+              value={field.value as string}
+              onChange={field.onChange}
+              options={options}
+              placeholder={placeholder}
+              searchPlaceholder={searchPlaceholder}
+              disabled={disabled}
+            />
+          </FormControl>
           <FormMessage />
         </FormItem>
       )}

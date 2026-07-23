@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -41,6 +42,7 @@ export function StakeholderPanel({
   approveAs,
   canRequestApproval,
 }: StakeholderPanelProps) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [delegateOpen, setDelegateOpen] = useState(false);
   const [delegateReason, setDelegateReason] = useState("");
@@ -74,7 +76,12 @@ export function StakeholderPanel({
     startTransition(async () => {
       const result = await requestStakeholderApprovalAction(engagementId);
       if (result.success) {
-        toast.success("Stakeholder approval requested");
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success("Stakeholder approval requested");
+        }
+        setTimeout(() => router.push("/dashboard/reception"), 2000);
       } else {
         toast.error(result.error);
       }
@@ -88,7 +95,11 @@ export function StakeholderPanel({
         delegateReason,
       );
       if (result.success) {
-        toast.success("Delegated approval requested");
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success("Delegated approval requested");
+        }
         setDelegateOpen(false);
       } else {
         toast.error(result.error);
@@ -108,8 +119,13 @@ export function StakeholderPanel({
         signature: JSON.stringify(signature),
       });
       if (result.success) {
-        toast.success("Engagement approved");
+        if (result.warning) {
+          toast.warning(result.warning);
+        } else {
+          toast.success("Engagement approved");
+        }
         setApproveOpen(false);
+        setTimeout(() => router.push("/dashboard/reception"), 2000);
       } else {
         toast.error(result.error);
       }

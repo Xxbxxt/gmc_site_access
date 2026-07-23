@@ -11,7 +11,7 @@ export type PersonInput = {
   dateOfBirth: string;
   gender: string;
   nationality: string;
-  email: string;
+  email?: string;
   phone: string;
   emergencyContactName: string;
   emergencyContactPhone: string;

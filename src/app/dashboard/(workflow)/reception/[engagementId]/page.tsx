@@ -66,7 +66,7 @@ export default async function ReceptionDetailPage({
     dateOfBirth: person.dateOfBirth,
     gender: person.gender,
     nationality: person.nationality,
-    email: person.email,
+    email: person.email ?? "",
     phone: person.phone,
     emergencyContactName: person.emergencyContactName,
     emergencyContactPhone: person.emergencyContactPhone,

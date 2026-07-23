@@ -1,7 +1,7 @@
 "use client";
 
 import { MoreHorizontalIcon } from "lucide-react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -55,6 +55,7 @@ export function ReceptionRow({
   workflowState,
   canManage,
 }: ReceptionRowProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -81,12 +82,11 @@ export function ReceptionRow({
 
   return (
     <>
-      <TableRow>
-        <TableCell>
-          <Link href={`/dashboard/reception/${engagementId}`}>
-            {personName}
-          </Link>
-        </TableCell>
+      <TableRow
+        className="cursor-pointer"
+        onClick={() => router.push(`/dashboard/reception/${engagementId}`)}
+      >
+        <TableCell>{personName}</TableCell>
         <TableCell>{passportNo}</TableCell>
         <TableCell>{accessPurpose}</TableCell>
         <TableCell>
@@ -95,7 +95,10 @@ export function ReceptionRow({
           </Badge>
         </TableCell>
         {canManage && (
-          <TableCell className="text-right">
+          <TableCell
+            className="text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
             {eligibleForTermination && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

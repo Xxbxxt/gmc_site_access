@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { ReceptionRow } from "@/app/dashboard/(workflow)/reception/reception-row";
 import { PageHeader } from "@/components/layout/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -33,6 +34,9 @@ export default async function ReceptionQueuePage() {
 
   const rows = await listEngagementsWithPerson();
   const firstName = session.displayName?.split(" ")[0] ?? "there";
+  const role = (["Receptionist", "HCM", "GMM", "DMD"] as const).find((r) =>
+    session.workflowRoles.includes(r),
+  );
 
   return (
     <div>
@@ -40,11 +44,18 @@ export default async function ReceptionQueuePage() {
         title={`Welcome back, ${firstName}!`}
         subtitle="Here, you'll find existing engagements and create new ones."
         actions={
-          canManage ? (
-            <Button asChild>
-              <Link href="/dashboard/reception/new">New Registration</Link>
-            </Button>
-          ) : undefined
+          <div className="flex items-center gap-3">
+            {role && (
+              <Badge variant="outline" className="text-muted-foreground">
+                {role}
+              </Badge>
+            )}
+            {canManage && (
+              <Button asChild>
+                <Link href="/dashboard/reception/new">New Registration</Link>
+              </Button>
+            )}
+          </div>
         }
       />
       <div className="overflow-x-auto bg-card">

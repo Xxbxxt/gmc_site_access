@@ -39,12 +39,14 @@ function labelFor(segment: string) {
 export function DashboardBreadcrumbs({ homeHref }: { homeHref: string }) {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
+  const homeSegments = homeHref.split("/").filter(Boolean);
+  const restSegments = segments.slice(homeSegments.length);
 
   const crumbs = [
     { label: "Home", href: homeHref },
-    ...segments.map((segment, index) => ({
+    ...restSegments.map((segment, index) => ({
       label: labelFor(segment),
-      href: `/${segments.slice(0, index + 1).join("/")}`,
+      href: `${homeHref}/${restSegments.slice(0, index + 1).join("/")}`,
     })),
   ];
 

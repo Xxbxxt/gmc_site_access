@@ -81,6 +81,24 @@ the two exceptions that are allowed to import these packages directly — they
 `components/ui/`) should never reach for `react-day-picker` or `date-fns`
 directly — build on `DatePicker` instead.
 
+## libphonenumber-js (phone number validation)
+
+Added 2026-07-23 for `reception-form.tsx`'s `phoneFieldSchema` — validates the
+combined `"{dialCode} {number}"` string (e.g. `"+233 241234567"`) against the
+selected country's real numbering plan (length, valid prefixes, allowed
+characters) via `isValidPhoneNumber` from `libphonenumber-js`, instead of only
+checking that a dial code and a non-empty number were both present. Approved
+as a new dependency specifically because hand-rolled per-country regex rules
+across `COUNTRY_CALLING_CODES`'s ~90 countries would be inaccurate and a
+maintenance burden — `libphonenumber-js` is the standard, actively-maintained
+port of Google's `libphonenumber` metadata. `isValidPhoneNumber` is called
+with no explicit country/region argument — since the input already starts
+with `+{dialCode}`, the library infers the calling code and matches the
+national number against every region sharing it (handles shared codes like
+NANP's `+1` correctly). Currently only imported in `reception-form.tsx` — if
+another form grows a phone field, extract this into a shared helper rather
+than duplicating the `isValidPhoneNumber` call inline.
+
 ## Drizzle casing
 
 `drizzle.config.ts` and `src/lib/db/client.ts` both set `casing: "snake_case"` so JS

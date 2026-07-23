@@ -58,7 +58,7 @@ export async function lookupPersonByPassportAction(
         dateOfBirth: person.dateOfBirth,
         gender: person.gender,
         nationality: person.nationality,
-        email: person.email,
+        email: person.email ?? "",
         phone: person.phone,
         emergencyContactName: person.emergencyContactName,
         emergencyContactPhone: person.emergencyContactPhone,
