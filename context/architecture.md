@@ -36,15 +36,18 @@ Azure Functions and Drizzle migrations sit at project root (outside `src/`).
 │   ├── check-hospital-timeout/
 │   └── send-email/
 └── src/
-    ├── proxy.ts                          → single Next.js proxy (auth) pipeline
+    ├── proxy.ts                          → single Next.js proxy (auth) pipeline — excludes `/register`
     ├── app/
     │   ├── layout.tsx
     │   ├── page.tsx                      → redirect to dashboard or sign-in
+    │   ├── register/
+    │   │   └── page.tsx                  → PUBLIC pre-registration form (no auth, not under proxy protection)
     │   ├── (auth)/                       → sign-in, sign-out, PIN, PIN setup, unauthorized
     │   ├── dashboard/
     │   │   ├── layout.tsx                → shared shell: session + unread count → DashboardShell + auto breadcrumbs
     │   │   ├── page.tsx                  → role router (SystemAdmin → system-admin/users; others → placeholder)
     │   │   ├── (workflow)/               → route group — workflow-layer queues (no URL segment)
+    │   │   │   ├── department/           → Department Head queue — read-only + single Approve action
     │   │   │   ├── reception/
     │   │   │   ├── hospital/
     │   │   │   ├── training/
@@ -57,12 +60,14 @@ Azure Functions and Drizzle migrations sit at project root (outside `src/`).
     ├── actions/
     │   ├── auth.ts                       → requestAccess, verifyPin, setupPin, refreshSession
     │   ├── admin.ts                      → provisioning, PIN reset, termination approval
+    │   ├── registration.ts               → submitRegistrationRequest (public, no auth), approveRegistrationRequest (Department Head only)
     │   ├── notifications.ts              → markNotificationRead, markAllNotificationsRead
     │   └── engagements.ts                → workflow mutations (Server Actions)
     ├── lib/
     │   ├── domain/
     │   │   └── types.ts                  → SystemRole, WorkflowRole, and shared type aliases
     │   ├── services/
+    │   │   ├── registration-service.ts   → creates Registration Request, routes to Department Head, approval → hands off to Reception
     │   │   ├── workflow-service.ts       → transitions, guards, path routing
     │   │   ├── person-registry-service.ts → passport lookup
     │   │   ├── document-service.ts
@@ -75,12 +80,12 @@ Azure Functions and Drizzle migrations sit at project root (outside `src/`).
     │   ├── email/
     │   │   ├── enqueue.ts                → used in Slice 10; direct send.ts call until then
     │   │   ├── send.ts
-    │   │   └── templates.ts              → one function per workflow event
+    │   │   └── templates.ts              → one function per workflow event (includes registration-submitted, registration-approved)
     │   ├── auth/
     │   │   ├── entra.ts                  → NextAuth config
     │   │   ├── pin.ts                    → hash, verify, validate, lockout
     │   │   ├── session.ts                → SessionUser type + getSession helper
-    │   │   └── guards.ts                 → requireWriteAccess, requireSystemAdmin, etc.
+    │   │   └── guards.ts                 → requireWriteAccess, requireSystemAdmin, requireDepartmentHead, etc.
     │   └── db/
     │       ├── client.ts
     │       ├── schema.ts                 → all Drizzle table definitions
@@ -88,55 +93,84 @@ Azure Functions and Drizzle migrations sit at project root (outside `src/`).
     └── components/
         ├── ui/                           → shadcn/ui components
         ├── layout/                       → public shell, dashboard shell + top bar, breadcrumbs, page header
-        └── workflow/                     → per-layer forms and queue components
+        ├── registration/                 → public pre-registration form (Sections 1–4), no upload fields
+        └── workflow/                     → per-layer forms and queue components (department queue is read-only + Approve button)
 ```
 
 ---
 
 ## Dashboard Layout
-
-Every route under `/dashboard/*` is wrapped by `src/app/dashboard/layout.tsx` — the single
-place that reads the session, queries the unread notification count, and renders
-`DashboardShell` (top bar + `max-w-5xl` content column) with auto-generated breadcrumbs
-(`DashboardBreadcrumbs`, derived from URL segments via a label map). Child layouts and pages
-never render their own shell or breadcrumbs:
+Every route under `/dashboard/*` is wrapped by `src/app/dashboard/layout.tsx` — the single place that reads the session, queries the unread notification count, and renders `DashboardShell` (top bar + `max-w-5xl` content column) with auto-generated breadcrumb(`DashboardBreadcrumbs`, derived from URL segments via a label map). Child layouts and pages never render their own shell or breadcrumbs:
 
 - `dashboard/system-admin/layout.tsx` — `requireSystemAdmin` guard only, passes children through
 - Pages render `PageHeader` (title / subtitle / actions) + content
-- `dashboard/(workflow)/` — route group holding the five workflow-layer queues (`reception`,
-  `hospital`, `training`, `security`, `it`), kept apart from `system-admin/` to mirror the System
-  Roles vs. Workflow Roles split (`project_overview.md`). Route groups add no URL segment, so
-  `/dashboard/reception` etc. are unchanged; no group-level layout is needed since
-  `dashboard/layout.tsx` already covers every child route
+- `dashboard/(workflow)/` — route group holding the six workflow-layer queues (`department`,`reception`, `hospital`, `training`, `security`, `it`), kept apart from `system-admin/` to mirror the System Roles vs. Workflow Roles split (`project_overview.md`). Route groups add no URL segment, so`/dashboard/department` dashboard/reception`, etc. are unchanged; no group-level layout is needed since `dashboard/layout.tsx` already covers every child route
+- `dashboard/department/` renders the queue as read-only rows with a single **Approve** action per Registration Request — no edit form, no reject control, even for Admin `/register` sits **outside** `/dashboard/*` and outside `(auth)/*` — it is not wrapped by the dashboard shell, has no session lookup, and is excluded from `src/proxy.ts` protection.
+
 
 ---
 
 ## System Boundaries
 
+
 | Folder | Owns |
 |---|---|
 | `src/app/` | Pages and API routes only. No business logic. |
+| `src/app/register/` | Public, unauthenticated page only — no session/auth code, no direct DB access. |
 | `src/actions/` | Server Actions for form mutations only. No file uploads. |
+| `src/actions/registration.ts` | `submitRegistrationRequest` runs with no auth guard (public); `approveRegistrationRequest` requires `requireDepartmentHead` guard. |
 | `src/lib/domain/` | Shared types and role/state string unions. No React, no Azure SDK, no Drizzle. |
-| `src/lib/services/` | Business logic — workflow transitions, flagging, notifications. |
+| `src/lib/services/` | Business logic — workflow transitions, flagging, notifications, registration routing. |
 | `src/lib/azure/` | Thin Azure SDK clients only (Blob, Queue, Graph). |
 | `src/lib/email/` | All outbound email — templates, send, enqueue (Slice 10). |
 | `src/lib/auth/` | All authentication — Entra ID, PIN, session, guards. |
 | `src/lib/db/` | Drizzle client, schema, seed. |
 | `src/components/` | UI only. No direct DB or workflow logic. |
-| `src/proxy.ts` | Single Next.js proxy pipeline (Next 16 renamed `middleware` → `proxy`; `nodejs` runtime only) — reads JWT token only, no DB calls. |
+| `src/proxy.ts` | Single Next.js proxy pipeline (Next 16 renamed `middleware` → `proxy`; `nodejs` runtime only) — reads JWT token only, no DB calls. Explicitly excludes `/register`. |
 | `functions/` | Azure Functions — timer and queue-triggered background jobs. |
 
 ---
 
 ## Data Flow
 
+### Public registration submission (Server Action, no auth)
+
+```
+src/components/registration/
+        ↓
+src/actions/registration.ts (submitRegistrationRequest — no guard)
+        ↓
+src/lib/services/registration-service.ts
+        ↓
+PostgreSQL (registration_requests table)
+        ↓
+src/lib/services/notification-service.ts   → notifications table (routed to matching Department Head(s))
+src/lib/email/send.ts                      → Graph API
+```
+
+### Department approval (Server Action, staff auth)
+
+```
+src/components/workflow/ (department queue — read-only rows + Approve button)
+        ↓
+src/actions/registration.ts (approveRegistrationRequest)
+        ↓
+src/lib/auth/guards.ts (requireDepartmentHead)
+        ↓
+src/lib/services/registration-service.ts
+        ↓
+PostgreSQL (registration_requests.status → 'approved')
+        ↓
+src/lib/services/notification-service.ts   → notifies Reception
+src/lib/email/send.ts
+```
+
 ### Dashboard reads (Server Components)
 
 ```
 src/app/dashboard/[layer]/page.tsx
         ↓
-src/lib/services/workflow-service.ts
+src/lib/services/workflow-service.ts   (or registration-service.ts for the department layer)
         ↓
 src/lib/db/schema.ts (Drizzle queries inline in services)
         ↓
@@ -227,12 +261,27 @@ Microsoft Graph API
 | email | text | |
 | display_name | text | |
 | system_role | text | User \| Guest \| Admin \| SystemAdmin |
-| workflow_roles | text[] | Receptionist, Hospital, etc. |
+| workflow_roles | text[] | Receptionist, Hospital, DepartmentHead, etc. |
+| department | text | Nullable — GMC Liaison Department this user heads; only set when `workflow_roles` includes `DepartmentHead` |
 | pin_hash | text | Never plaintext |
 | pin_failed_attempts | int | |
 | pin_locked_until | timestamptz | Null when not locked |
 | provisioned_at | timestamptz | When System Admin granted access |
 | created_at | timestamptz | |
+
+### `registration_requests` *(new)*
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| department | text | Selected GMC Liaison Department — routes notification to matching `staff_users.department` where `DepartmentHead` in `workflow_roles` |
+| form_data | jsonb | Sections 1–4 data — mirrors the relevant subset of `docs/form-fields.schema.json` |
+| status | text | `PendingDepartmentApproval` \| `Approved` |
+| approved_by | uuid | Nullable FK → staff_users |
+| approved_at | timestamptz | Nullable |
+| created_at | timestamptz | |
+
+No document columns — public form accepts data entry only, no uploads.
 
 ### `persons`
 
@@ -255,6 +304,7 @@ Microsoft Graph API
 |---|---|---|
 | id | uuid | PK |
 | person_id | uuid | FK → persons |
+| registration_request_id | uuid | Nullable FK → registration_requests — reference/evidence only, never auto-fills Reception fields |
 | access_purpose | text | work \| visit \| visit_mine |
 | arrival_date | date | |
 | departure_date | date | |
@@ -328,7 +378,8 @@ Microsoft Graph API
 | recipient_staff_user_id | uuid | FK → staff_users |
 | requester_staff_user_id | uuid | Nullable FK → staff_users — who the notification is about (e.g. access requester); null for non-request notifications |
 | requested_role | text | Nullable — the role the requester chose on `/unauthorized`; lets the Provision dialog confirm without re-prompting. Null for non-request notifications |
-| engagement_id | uuid | Nullable FK — null for auth notifications |
+| engagement_id | uuid | Nullable FK — null for auth notifications and registration-request notifications |
+| registration_request_id | uuid | Nullable FK → registration_requests — set for Department Head approval notifications |
 | message | text | |
 | read_at | timestamptz | Null until read |
 | created_at | timestamptz | |
@@ -353,7 +404,7 @@ Microsoft Graph API
 |---|---|
 | `documents/engagements/{engagementId}/{docType}/{filename}` | All layer uploads |
 
-Access: private containers; upload via `app/api/documents/`; view via short-lived SAS URLs.
+Access: private containers; upload via `app/api/documents/`; view via short-lived SAS URLs. No blob paths exist for `registration_requests` — the public form never uploads files.
 
 ---
 
@@ -362,14 +413,14 @@ Access: private containers; upload via `app/api/documents/`; view via short-live
 - Provider: Microsoft Entra ID (org MFA) + 4-digit app PIN (hashed in `staff_users`)
 - Sign-in flow: Entra → provisioned check → PIN confirmed → dashboard
 - Unprovisioned users (`system_role = User`): `/unauthorized` — role selector + access request CTA
-- Proxy: `src/proxy.ts` — single Next.js proxy pipeline; reads JWT only (no DB calls per request)
-- Protected routes: `/dashboard/*`
+- Proxy: `src/proxy.ts` — single Next.js proxy pipeline; reads JWT only (no DB calls per request); **excludes `/register`**, which has zero auth
+- Protected routes: `/dashboard/*` (including `/dashboard/department`)
 - PIN lockout: 3 failed attempts → 15-minute lock
 - PIN rules: no all-zeros, no repeating digits, no ascending/descending sequences
 - First login: PIN setup screen before dashboard
 - PIN reset: System Admin only — clears `pin_hash`; user re-creates on next login
 - All auth logic lives in `src/lib/auth/` — nowhere else
-
+- The auth boundary sits between `/register` (public) and `/dashboard/department` (first staff-authenticated layer)
 ---
 
 ## Workflow States
@@ -379,6 +430,8 @@ Defined as typed string unions in `src/lib/domain/types.ts`.
 **workflow_state:** `Draft`, `AtReception`, `AtHospital`, `AtTraining`, `AtSecurity`, `AwaitingProvisioning`, `Completed`, `Cancelled` (Receptionist-initiated soft-cancel of a still-unapproved Reception record — distinct from `access_state`'s termination path, which applies to records that have already progressed; added during Slice 2's build)
 
 **access_state:** `Pending`, `Active`, `Expired`, `TerminationRequested`, `Terminated`
+
+`registration_requests.status` (`PendingDepartmentApproval` \| `Approved`) is a separate, simpler state machine — it is not part of `workflow_state`/`access_state` since a Registration Request is not yet an Engagement.
 
 Path-specific transitions — see `context/project_overview.md` Core User Flow.
 
@@ -391,7 +444,7 @@ Path-specific transitions — see `context/project_overview.md` Core User Flow.
 - **Local dev (Slices 1–9):** `send.ts` calls `graph-mail.ts` directly (synchronous)
 - **Production (Slice 10+):** `notification-service` calls `enqueue.ts` → Storage Queue → `functions/send-email` → `send.ts` → `graph-mail.ts`
 - Timer jobs (visa expiry, hospital timeout) use the same email path
-
+- Registration submission and Department approval use the same path (`templates.ts` gains `registration-submitted` and `registration-approved` templates)
 ---
 
 ## Invariants
@@ -425,3 +478,10 @@ Rules the AI agent must never violate:
   System Admin pick more than one). Temporary coverage for an absent HCM/GMM/DMD goes
   through Delegated Approval (Slice 2's one-off, audited, revocable grant) — never by
   permanently assigning someone a second workflow role
+- `/register` is never wrapped by `src/proxy.ts` and never reads session/JWT state
+- `registration_requests` has exactly one write path after creation — `approveRegistrationRequest`,
+  guarded by `requireDepartmentHead` and scoped to the approver's own `department`. No reject/edit
+  action exists anywhere in the codebase for this table.
+- A `registration_requests` row is never promoted to an `engagements` row automatically — Reception's
+  manual passport lookup and Engagement creation always happen explicitly, even when an approved
+  Registration Request exists
