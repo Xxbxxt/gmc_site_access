@@ -38,8 +38,8 @@ Public pages: `/register` only. No other public pages.
 
 - Anyone (no login) accesses `/register` via URL
 - Fills in Sections 1–4 of the Reception form (data entry only — no document uploads at this stage)
-- Selects a **GMC Liaison Department** (determines which Department Head is notified)
-- Submits — creates a **Registration Request** with status `pending_department_approval`
+- Selects a **GMC Liaison Department** from a fixed, canonical list (determines which Department Head is notified) — the list itself is defined separately, not in this document
+- Submits — creates a **Registration Request** with status `PendingDepartmentApproval`
 - Does **not** create a Person or Engagement yet
 - Triggers dashboard + email notification to the relevant Department Head
 
@@ -49,7 +49,7 @@ Public pages: `/register` only. No other public pages.
 - Admin at this layer can perform exactly **one write action: Approve**
 - Everything else at this layer is **read-only**, including for Admin — no edit action, no reject action
 - "Rejection" = the Department Head simply leaves the Registration Request untouched (no explicit rejected state)
-- On Approve: Registration Request status → `approved`, forwarded to Reception; dashboard + email notification sent to Reception
+- On Approve: Registration Request status → `Approved`, forwarded to Reception; dashboard + email notification sent to Reception
 
 ### Step 2 onward
 
@@ -122,8 +122,9 @@ No layer acts before the previous required layer completes. This applies to all 
 ### Registration Request *(new)*
 
 - Created by public, unauthenticated submission at `/register`
-- Holds Sections 1–4 data + selected `gmc_liaison_department`
-- `status`: `pending_department_approval` | `approved`
+- Holds Sections 1–4 data + selected `gmc_liaison_department` (drawn from the canonical department
+  list once defined — not free text)
+- `status`: `PendingDepartmentApproval` | `Approved`
 - No documents attached
 - Not an Engagement — has no `workflow_state` / `access_state`
 - On approval, forwarded to Reception as reference data; Reception's manual passport lookup and Engagement creation proceed as before
@@ -164,6 +165,11 @@ Rules agents must enforce — referenced from services and guards:
 - Guests cannot write — Admin required for all mutations
 - No layer acts before the previous required layer completes
 - Access card expiry ≤ visa/permit end or departure date (whichever is earlier)
+- Registration Request approval is idempotent — repeated or concurrent approvals never
+  double-transition the record or send a duplicate notification to Reception
+- GMC Liaison Department is a closed, canonical list shared by Reception's form and the public
+  Registration form — not free text; department heads are seeded for every value on that list
+  ahead of go-live
 
 ---
 

@@ -104,8 +104,8 @@ Every route under `/dashboard/*` is wrapped by `src/app/dashboard/layout.tsx` �
 
 - `dashboard/system-admin/layout.tsx` — `requireSystemAdmin` guard only, passes children through
 - Pages render `PageHeader` (title / subtitle / actions) + content
-- `dashboard/(workflow)/` — route group holding the six workflow-layer queues (`department`,`reception`, `hospital`, `training`, `security`, `it`), kept apart from `system-admin/` to mirror the System Roles vs. Workflow Roles split (`project_overview.md`). Route groups add no URL segment, so`/dashboard/department` dashboard/reception`, etc. are unchanged; no group-level layout is needed since `dashboard/layout.tsx` already covers every child route
-- `dashboard/department/` renders the queue as read-only rows with a single **Approve** action per Registration Request — no edit form, no reject control, even for Admin `/register` sits **outside** `/dashboard/*` and outside `(auth)/*` — it is not wrapped by the dashboard shell, has no session lookup, and is excluded from `src/proxy.ts` protection.
+- `dashboard/(workflow)/` — route group holding the six workflow-layer queues (`department`, `reception`, `hospital`, `training`, `security`, `it`), kept apart from `system-admin/` to mirror the System Roles vs. Workflow Roles split (`context/project-overview.md`). Route groups add no URL segment, so `/dashboard/department`, `/dashboard/reception`, etc. are unchanged; no group-level layout is needed since `dashboard/layout.tsx` already covers every child route
+- `dashboard/department/` renders the queue as read-only rows with a single **Approve** action per Registration Request — no edit form, no reject control, even for Admin. `/register` sits **outside** `/dashboard/*` and outside `(auth)/*` — it is not wrapped by the dashboard shell, has no session lookup, and is excluded from `src/proxy.ts` protection.
 
 
 ---
@@ -135,7 +135,7 @@ Every route under `/dashboard/*` is wrapped by `src/app/dashboard/layout.tsx` �
 
 ### Public registration submission (Server Action, no auth)
 
-```
+```text
 src/components/registration/
         ↓
 src/actions/registration.ts (submitRegistrationRequest — no guard)
@@ -150,7 +150,7 @@ src/lib/email/send.ts                      → Graph API
 
 ### Department approval (Server Action, staff auth)
 
-```
+```text
 src/components/workflow/ (department queue — read-only rows + Approve button)
         ↓
 src/actions/registration.ts (approveRegistrationRequest)
@@ -159,15 +159,24 @@ src/lib/auth/guards.ts (requireDepartmentHead)
         ↓
 src/lib/services/registration-service.ts
         ↓
-PostgreSQL (registration_requests.status → 'approved')
+PostgreSQL (registration_requests.status → 'Approved')
         ↓
 src/lib/services/notification-service.ts   → notifies Reception
 src/lib/email/send.ts
 ```
 
+`approveRegistrationRequest` must guard the transition the same way
+`applyStakeholderApproval`/`recordHospitalClearance` do: pre-check
+`status === "PendingDepartmentApproval"`, re-check inside a transaction, and
+only set `approved_by`/`approved_at` and enqueue the Reception notification
+on the transition that actually wins. Repeated calls (retry) or concurrent
+calls (two staff holding `DepartmentHead` for the same department) must no-op
+rather than re-transition an already-approved row or send a second
+notification.
+
 ### Dashboard reads (Server Components)
 
-```
+```text
 src/app/dashboard/[layer]/page.tsx
         ↓
 src/lib/services/workflow-service.ts   (or registration-service.ts for the department layer)
@@ -262,7 +271,7 @@ Microsoft Graph API
 | display_name | text | |
 | system_role | text | User \| Guest \| Admin \| SystemAdmin |
 | workflow_roles | text[] | Receptionist, Hospital, DepartmentHead, etc. |
-| department | text | Nullable — GMC Liaison Department this user heads; only set when `workflow_roles` includes `DepartmentHead` |
+| department | text | Nullable — GMC Liaison Department this user heads; only set when `workflow_roles` includes `DepartmentHead`. Constrained to the canonical `GmcLiaisonDepartment` list (values TBD) shared with `registration_requests.department` — not arbitrary text |
 | pin_hash | text | Never plaintext |
 | pin_failed_attempts | int | |
 | pin_locked_until | timestamptz | Null when not locked |
@@ -274,7 +283,7 @@ Microsoft Graph API
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | PK |
-| department | text | Selected GMC Liaison Department — routes notification to matching `staff_users.department` where `DepartmentHead` in `workflow_roles` |
+| department | text | Selected GMC Liaison Department — routes notification to matching `staff_users.department` where `DepartmentHead` in `workflow_roles`. Constrained to the same canonical `GmcLiaisonDepartment` list as `staff_users.department` (list TBD); stored as `text` per this project's existing text+TS-union convention — no DB enum/FK |
 | form_data | jsonb | Sections 1–4 data — mirrors the relevant subset of `docs/form-fields.schema.json` |
 | status | text | `PendingDepartmentApproval` \| `Approved` |
 | approved_by | uuid | Nullable FK → staff_users |
@@ -304,7 +313,7 @@ No document columns — public form accepts data entry only, no uploads.
 |---|---|---|
 | id | uuid | PK |
 | person_id | uuid | FK → persons |
-| registration_request_id | uuid | Nullable FK → registration_requests — reference/evidence only, never auto-fills Reception fields |
+| registration_request_id | uuid | Nullable FK → registration_requests — reference/evidence only, never auto-fills Reception fields. Unique (like `stakeholder_approvals.engagement_id`): a Registration Request backs at most one Engagement — Reception's UI must treat an already-linked Registration Request as consumed |
 | access_purpose | text | work \| visit \| visit_mine |
 | arrival_date | date | |
 | departure_date | date | |
@@ -379,7 +388,7 @@ No document columns — public form accepts data entry only, no uploads.
 | requester_staff_user_id | uuid | Nullable FK → staff_users — who the notification is about (e.g. access requester); null for non-request notifications |
 | requested_role | text | Nullable — the role the requester chose on `/unauthorized`; lets the Provision dialog confirm without re-prompting. Null for non-request notifications |
 | engagement_id | uuid | Nullable FK — null for auth notifications and registration-request notifications |
-| registration_request_id | uuid | Nullable FK → registration_requests — set for Department Head approval notifications |
+| registration_request_id | uuid | Nullable FK → registration_requests — required (non-null) for both the registration-submitted notification (to the matching Department Head) and the registration-approved notification (Reception handoff); null for every other notification type |
 | message | text | |
 | read_at | timestamptz | Null until read |
 | created_at | timestamptz | |
@@ -482,6 +491,18 @@ Rules the AI agent must never violate:
 - `registration_requests` has exactly one write path after creation — `approveRegistrationRequest`,
   guarded by `requireDepartmentHead` and scoped to the approver's own `department`. No reject/edit
   action exists anywhere in the codebase for this table.
+- `approveRegistrationRequest` is idempotent: repeated or concurrent calls (including from multiple
+  staff holding `DepartmentHead` for the same department) must never double-transition a
+  `registration_requests` row or send a duplicate Reception notification — guarded the same way as
+  `applyStakeholderApproval`/`recordHospitalClearance` (pre-check + transactional re-check)
 - A `registration_requests` row is never promoted to an `engagements` row automatically — Reception's
   manual passport lookup and Engagement creation always happen explicitly, even when an approved
   Registration Request exists
+- `engagements.registration_request_id` is unique — a Registration Request backs at most one
+  Engagement, enforced by a DB-level unique constraint the same way `stakeholder_approvals.engagement_id`
+  guards against double-approval; Reception's engagement-creation flow must not let an already-linked
+  Registration Request be consumed a second time
+- `registration_requests.department` and `staff_users.department` share one canonical
+  `GmcLiaisonDepartment` list (the list itself is defined separately, not in this document) — every
+  value in that list must have a seeded/provisioned Department Head before the feature ships; no
+  runtime "no Department Head found" rejection path is required
