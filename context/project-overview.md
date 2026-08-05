@@ -4,7 +4,7 @@
 
 GMC Site Access digitizes foreign visitor and expatriate site-access registration at Ghana Manganese Company. Visitors are record subjects only — they do not log in, except to submit the public pre-registration form.
 
-The workflow now begins with a **public, unauthenticated pre-registration form**. From there, GMC staff take over, starting with the **Department Head**: Microsoft Entra ID → 4-digit PIN → role-based dashboard. Only System-Admin-provisioned users get past `/unauthorized`.
+The workflow begins with a **public, unauthenticated pre-registration form**. From there, GMC staff take over, starting with the **Department Head**: Microsoft Entra ID → 4-digit PIN → role-based dashboard. Only System-Admin-provisioned users get past `/unauthorized`.
 
 Each visit is an **Engagement** (created at Reception, not before) routed through workflow layers based on access purpose set at Reception. Admin (write) and Guest (read-only) at each layer. Every action triggers dashboard + email notification and is audit-logged.
 
@@ -13,15 +13,14 @@ Each visit is an **Engagement** (created at Reception, not before) routed throug
 ## Pages
 
 ```
-/                         → redirect to dashboard or sign-in (staff)
-/register                 → PUBLIC pre-registration form (no auth)
-/(auth)/*                 → Microsoft sign-in, PIN, unauthorized
+/                         → PUBLIC pre-registration form (no auth)
+/(auth)/*          → Microsoft sign-in, PIN, unauthorized
 /dashboard/[layer]        → workflow queue for assigned role
 ```
 
 Layer values: `department`, `reception`, `hospital`, `training`, `security`, `it`, `admin` (System Admin user management).
 
-The auth boundary (Entra ID + PIN + role middleware) sits **between** `/register` and `/dashboard/department` — `/register` has zero auth; everything from `department` onward requires staff auth.
+The auth boundary (Entra ID + PIN + role middleware) sits **between** `/` and `/dashboard/department` — `/` has zero auth; everything from `department` onward requires staff auth.
 
 ---
 
@@ -29,14 +28,14 @@ The auth boundary (Entra ID + PIN + role middleware) sits **between** `/register
 
 Staff see dashboard navigation for their assigned workflow role(s). System Administrators additionally access user provisioning and termination approval.
 
-Public pages: `/register` only. No other public pages.
+Public pages: `/` only. No other public pages.
 
 ---
 
 ## Core User Flow
 ### Step 0 — Public Pre-Registration
 
-- Anyone (no login) accesses `/register` via URL
+- Anyone (no login) accesses `/` via URL
 - Fills in Sections 1–4 of the Reception form (data entry only — no document uploads at this stage)
 - Selects a **GMC Liaison Department** from a fixed, canonical list (determines which Department Head is notified) — the list itself is defined separately, not in this document
 - Submits — creates a **Registration Request** with status `PendingDepartmentApproval`
@@ -155,7 +154,7 @@ No layer acts before the previous required layer completes. This applies to all 
 
 Rules agents must enforce — referenced from services and guards:
 
-- `/register` is fully public — no auth, no PIN, accessible to all
+- `/` is fully public — no auth, no PIN, accessible to all
 - Auth boundary (Entra ID + PIN + role middleware) applies to everything from the Department layer onward
 - Department layer: Admin's only permitted write action is **Approve**; no reject action exists; all other interaction is read-only, even for Admin
 - Fresh documents every engagement — never attach visit docs to Person alone
