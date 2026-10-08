@@ -2,9 +2,9 @@
 
 ## About the Project
 
-GMC Site Access digitizes foreign visitor and expatriate site-access registration at Ghana Manganese Company. Visitors are record subjects only — they do not log in, except to submit the public pre-registration form.
+GMC Site Access digitizes foreign visitor and expatriate site-access registration at Ghana Manganese Company. Visitors are record subjects only — they do not log in, except to open an invitation link and submit the pre-registration form in a token-gated session.
 
-The workflow begins with a **public, unauthenticated pre-registration form**. From there, GMC staff take over, starting with the **Department Head**: Microsoft Entra ID → 4-digit PIN → role-based dashboard. Only System-Admin-provisioned users get past `/unauthorized`.
+The workflow begins with the **Department Head**, who generates an **invitation link** in the invitation console and emails it to the visitor: Microsoft Entra ID → 4-digit PIN → role-based dashboard. **The visitor opens that link to reach the pre-registration form — the page is public, but submission requires a valid, unrevoked link.** Only System-Admin-provisioned users get past `/unauthorized`.
 
 Each visit is an **Engagement** (created at Reception, not before) routed through workflow layers based on access purpose set at Reception. Admin (write) and Guest (read-only) at each layer. Every action triggers dashboard + email notification and is audit-logged.
 
@@ -13,52 +13,65 @@ Each visit is an **Engagement** (created at Reception, not before) routed throug
 ## Pages
 
 ```
-/                         → PUBLIC pre-registration form (no auth)
+/                         → PUBLIC pre-registration form (no auth); submit
+                            enabled only with a valid invitation token
+/?token=<invitation>      → token-gated submission session (GMC Liaison
+                            Department injected from the link)
 /(auth)/*          → Microsoft sign-in, PIN, unauthorized
+/dashboard/department     → Department Head invitation console
 /dashboard/[layer]        → workflow queue for assigned role
 ```
 
 Layer values: `department`, `reception`, `hospital`, `training`, `security`, `it`, `admin` (System Admin user management).
 
-The auth boundary (Entra ID + PIN + role middleware) sits **between** `/` and `/dashboard/department` — `/` has zero auth; everything from `department` onward requires staff auth.
+The auth boundary (Entra ID + PIN + role middleware) sits **between** `/` and `/dashboard/department` — `/` has zero auth, **but its submit action is gated by the invitation token**; everything from `department` onward requires staff auth.
 
 ---
 
 ## Navigation
 
-Staff see dashboard navigation for their assigned workflow role(s). System Administrators additionally access user provisioning and termination approval.
+Staff see dashboard navigation for their assigned workflow role(s). **A Department Head's dashboard is the invitation console — generate links, resend, and revoke.** System Administrators additionally access user provisioning and termination approval.
 
 Public pages: `/` only. No other public pages.
 
 ---
 
 ## Core User Flow
-### Step 0 — Public Pre-Registration
+### Step 0 — Department Head: Issue Invitation
 
-- Anyone (no login) accesses `/` via URL
-- Fills in Sections 1–4 of the Reception form (data entry only — no document uploads at this stage)
-- Selects a **GMC Liaison Department** from a fixed, canonical list (determines which Department Head is notified) — the list itself is defined separately, not in this document
-- Submits — creates a **Registration Request** with status `PendingDepartmentApproval`
-- Does **not** create a Person or Engagement yet
-- Triggers dashboard + email notification to the relevant Department Head
+- Department Head signs in (Entra ID → PIN) and generates an invitation link in the invitation console
+- The link is emailed to the visitor and carries the GMC Liaison Department it was issued for
+- No expiry once issued; the Department Head revokes the link to stop further submissions
+- The link stays valid until revoked — any holder may submit with it (not restricted to the invited address)
+- Link states: outstanding | used | revoked
+
+### Step 0 (cont.) — Invited Submission
+
+- Anyone (no login) may open `/`; **submission is disabled unless the URL carries a valid, unrevoked invitation token**
+- Without a valid link the form is visible but read-only, with an inline message: "You need an invitation link from the GMC Liaison Department"
+
+- The GMC Liaison Department is injected from the invitation link — the visitor does not select it. It is a closed, canonical list; the list itself is defined separately, not in this document
+
+- Triggers dashboard + email notification to the **Department Head who issued the invitation**
 
 ### Step 1 — Department
 
-- New workflow layer, staffed by a new role: **Department Head**
-- Admin at this layer can perform exactly **one write action: Approve**
-- Everything else at this layer is **read-only**, including for Admin — no edit action, no reject action
-- "Rejection" = the Department Head simply leaves the Registration Request untouched (no explicit rejected state)
-- On Approve: Registration Request status → `Approved`, forwarded to Reception; dashboard + email notification sent to Reception
+- Workflow layer staffed by the **Department Head**, whose only function is the invitation console
+- Admin at this layer can perform exactly **one write action: Issue Invitation** (generate + email the link)
+- Generated links are listed with their state; Admin can **revoke** an outstanding link
+- Everything else at this layer is **read-only**, including for Admin — no edit action on submitted data, no reject action
+- On invited submission: Registration Request status → `Approved`, forwarded to Reception; dashboard + email notification sent to Reception
+- The HOD's decision point is **before** the visitor acts — declining is simply not issuing a link (no explicit rejected state)
 
 ### Step 2 onward
 
 Records route at Reception by **access purpose** and (for visitors) **mine-site access**:
 
-| Access purpose | Mine site | Path (from Department approval) |
+| Access purpose | Mine site | Path (from invitation → submission) |
 |---|---|---|
-| Coming to work | Yes | Department → Reception → Hospital → Training School → Security → IT |
-| Coming to visit | No | Department → Reception only |
-| Coming to visit | Yes | Department → Reception → Training School → Security → IT |
+| Coming to work | Yes | Reception → Hospital → Training School → Security → IT |
+| Coming to visit | No | Reception only |
+| Coming to visit | Yes | Reception → Training School → Security → IT |
 
 No layer acts before the previous required layer completes. This applies to all three access-purpose paths.
 
@@ -118,15 +131,23 @@ No layer acts before the previous required layer completes. This applies to all 
 
 ## Data Architecture
 
+### Invitation *(new)*
+
+- Created by the **Department Head** in the invitation console — the HOD's act of issuing the link is the visit approval
+- Carries `gmc_liaison_department`, the issuing staff user, the recipient email, and the token
+- `state`: `outstanding` | `used` | `revoked`; no expiry once issued
+- Revocation immediately blocks further submissions from that link
+- Not an Engagement — carries no `workflow_state` / `access_state`
+- Submission is idempotent — one invitation admits one Registration Request
+
 ### Registration Request *(new)*
 
-- Created by public, unauthenticated submission at `/register`
-- Holds Sections 1–4 data + selected `gmc_liaison_department` (drawn from the canonical department
-  list once defined — not free text)
-- `status`: `PendingDepartmentApproval` | `Approved`
+- Created only by submission from a valid, unrevoked invitation; the form route `/` is public but its submit action is token-gated
+- Holds Sections 1–4 data + `gmc_liaison_department` **injected from the link** (drawn from the canonical department list once defined — not free text)
+- `status`: `Submitted` | `Approved` (`Submitted` at creation; `Approved` on invited submission, since the invitation is the approval)
 - No documents attached
 - Not an Engagement — has no `workflow_state` / `access_state`
-- On approval, forwarded to Reception as reference data; Reception's manual passport lookup and Engagement creation proceed as before
+- Forwarded to Reception as reference data; Reception's manual passport lookup and Engagement creation proceed as before
 
 ### Person
 
@@ -154,9 +175,9 @@ No layer acts before the previous required layer completes. This applies to all 
 
 Rules agents must enforce — referenced from services and guards:
 
-- `/` is fully public — no auth, no PIN, accessible to all
+- `/` is public to view — no auth, no PIN; submission requires a valid, unrevoked invitation token
 - Auth boundary (Entra ID + PIN + role middleware) applies to everything from the Department layer onward
-- Department layer: Admin's only permitted write action is **Approve**; no reject action exists; all other interaction is read-only, even for Admin
+- Department layer: Admin's only permitted write actions are **Issue Invitation** and **Revoke Invitation**; no reject action exists; all other interaction is read-only, even for Admin
 - Fresh documents every engagement — never attach visit docs to Person alone
 - Passport lookup is manual — Receptionist types passport number; no OCR
 - Passport biodata upload is evidence only — does not auto-fill form fields
@@ -187,7 +208,7 @@ Rules agents must enforce — referenced from services and guards:
 
 | Role | Department |
 |---|---|
-| Department Head | Department *(new — approves Registration Requests for their GMC Liaison Department)* |
+| Department Head | Department *(new — issues and revokes invitation links for their GMC Liaison Department)* |
 | Receptionist | Reception |
 | HCM / GMM / DMD | Reception (stakeholder approval) |
 | Hospital Records Staff | Hospital |
@@ -199,8 +220,8 @@ Rules agents must enforce — referenced from services and guards:
 
 ## Features In Scope
 
-- Public, unauthenticated pre-registration form (`/register`) — Sections 1–4, no uploads
-- Department layer with Department Head role — approve-only write action, read-only otherwise
+- Public pre-registration form (/) — Sections 1–4, no uploads; viewable by anyone, submittable only with an invitation token
+- Department Head invitation console — generate, email, and revoke invitation links
 - Auth subsystem (Entra ID + PIN + middleware pipeline)
 - Role-based access (system roles + workflow roles)
 - Path-based workflow routing (work, visit-only, visit + mine site)
