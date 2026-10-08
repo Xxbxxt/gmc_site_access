@@ -366,7 +366,6 @@ The following rules define the expected behaviour of the system:
 - Hospital fitness clearance.
 - Training and induction processing.
 - Security review.
-- IT biometric enrollment and access-card processing.
 - Stakeholder approval.
 - Applicable document management.
 - Visa and permit expiry monitoring.
@@ -429,6 +428,5 @@ At a high level, GMC Site Access follows this process:
 
 **Visitor Access Remains Active Until Expiry or Termination**
 
-The system is centred around a simple principle:
+The system is centered around a simple principle:
 
-> **A Registration Request starts the process, a Person represents the visitor, and an Engagement represents the specific visit or work activity being processed.**
